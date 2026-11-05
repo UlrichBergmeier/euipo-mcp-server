@@ -7,6 +7,9 @@ services:
     environment:
       AUTH0_ISSUER: "https://dev-yf816x77jyish1bb.eu.auth0.com/"
       MCP_RESOURCE_URL: "https://mcp.trademark-assistant.de"
+    networks:
+      - default
+      - traefik_shared
     ports:
       - "127.0.0.1:8765:8000"
     volumes:
@@ -27,3 +30,9 @@ services:
       - /tmp
     pids_limit: 100
     mem_limit: 512m
+
+networks:
+  default:
+  traefik_shared:
+    external: true
+    name: root_default
