@@ -18,7 +18,22 @@ docker compose up -d --build
 docker compose ps
 ```
 
-**Noch keine echten EUIPO-Zugangsdaten eingeben.** Für die ersten Tests bleiben `EUIPO_CLIENT_ID` und `EUIPO_CLIENT_SECRET` leer. Erst nach Einrichtung geeigneter Dateirechte oder eines Secret-Stores werden sie serverseitig hinterlegt.
+**Geheimnisse ausschließlich lokal auf dem VPS speichern.** Die nächste Entwicklungsstufe liest die API-Zugangsdaten ausschließlich aus `/run/secrets/euipo_client_id` und `/run/secrets/euipo_client_secret`. Diese werden als schreibgeschützte Datei-Mounts aus `private/` übergeben und tauchen nicht als Klartext in `docker inspect` oder `docker compose config` auf.
+
+**Wichtige Reihenfolge für ein Update von v0.4:**
+
+```bash
+cd /opt/euipo-mcp
+git pull --ff-only
+bash scripts/configure_secrets.sh
+docker compose config
+docker compose build euipo-mcp
+docker compose up -d --no-deps euipo-mcp
+```
+
+Das Skript fragt API Key und API Secret verdeckt in der Hostinger-Webkonsole ab. **Niemals Zugangsdaten in ChatGPT, GitHub, Screenshots oder normale Shell-Befehle kopieren.** Die Dateien werden mit Besitzer root, Gruppe GID 10001, Dateirechten 0640 in einem Verzeichnis mit Modus 0700 gespeichert. Docker bindet die Dateien einzeln als read-only ein. Auf dem Host kann root sie weiterhin lesen; vollständiger Schutz gegen einen kompromittierten VPS ist damit nicht möglich. Keine Secrets in Git versionieren.
+
+Die Implementierung der offiziellen EUIPO-Endpunkte muss vor einer echten Produktivabfrage gegen die Original-API-Spezifikation abgeglichen werden. Keine Freigabe von Traefik ohne OAuth-Schutz.
 
 ## Funktionen
 
