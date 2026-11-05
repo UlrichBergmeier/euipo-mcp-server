@@ -1,4 +1,4 @@
-# LOCAL-ONLY DEVELOPMENT. No Traefik labels, no public ingress, no shared network.
+# LOCAL ONLY: no public port, no Traefik labels.
 name: euipo-mcp-local
 services:
   euipo-mcp:
@@ -6,9 +6,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8765:8000"
-    environment:
-      EUIPO_CLIENT_ID: ${EUIPO_CLIENT_ID:-}
-      EUIPO_CLIENT_SECRET: ${EUIPO_CLIENT_SECRET:-}
+    volumes:
+      - type: bind
+        source: ./private/euipo_client_id
+        target: /run/secrets/euipo_client_id
+        read_only: true
+      - type: bind
+        source: ./private/euipo_client_secret
+        target: /run/secrets/euipo_client_secret
+        read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
