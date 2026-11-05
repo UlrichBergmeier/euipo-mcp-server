@@ -1,0 +1,14 @@
+# Optional HTTPS overlay. Apply explicitly only after security review:
+# docker compose -f compose.yaml -f compose.https.yaml up -d --no-deps euipo-mcp
+# Base compose.yaml remains local-only and exposes no Traefik router.
+services:
+  euipo-mcp:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "root_default"
+      traefik.http.routers.euipo-mcp.rule: "Host(`mcp.trademark-assistant.de`)"
+      traefik.http.routers.euipo-mcp.entrypoints: "websecure"
+      traefik.http.routers.euipo-mcp.tls: "true"
+      traefik.http.routers.euipo-mcp.tls.certresolver: "mytlschallenge"
+      traefik.http.routers.euipo-mcp.service: "euipo-mcp"
+      traefik.http.services.euipo-mcp.loadbalancer.server.port: "8000"
