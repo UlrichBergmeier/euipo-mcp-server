@@ -4,6 +4,7 @@ import json
 from mcp.server.fastmcp import FastMCP
 from core import create_variants, comparative_age
 from euipo import EUIPOClient
+from similarity import euipo_similarity_search
 
 mcp=FastMCP(
     "Markenpruefassistent",
@@ -70,6 +71,40 @@ async def euipo_markendetails(anmeldenummer: str)->dict:
         return {"fehler":str(e),"recherchestand":"nicht durchgeführt"}
     except Exception:
         return {"fehler":"EUIPO-Detailabruf fehlgeschlagen; serverseitig prüfen","recherchestand":"nicht durchgeführt"}
+
+@mcp.tool()
+async def euipo_aehnlichkeitsrecherche(
+    zeichen: str,
+    nizza_klasse: int = 0,
+    weitere_suchbegriffe: list[str] | None = None,
+    seiten_pro_suche: int = 2,
+    seitenumfang: int = 25,
+    nur_potenziell_lebende: bool = True,
+    markenbasis: str = "ALL",
+) -> dict:
+    """Begrenzte EUIPO-Wortmarken-Kandidatensuche: identische und technisch ähnliche Zeichen.
+
+    Berücksichtigt angemeldete/eingetragene Status, markiert unklare Status.
+    Keine vollständige Kollisionsrecherche. Klang-/Begriffsvarianten gesondert vorgeben.
+    """
+    try:
+        return await euipo_similarity_search(
+            zeichen=zeichen,
+            nizza_klasse=nizza_klasse,
+            weitere_suchbegriffe=weitere_suchbegriffe,
+            seiten_pro_suche=seiten_pro_suche,
+            seitenumfang=seitenumfang,
+            nur_potenziell_lebende=nur_potenziell_lebende,
+            markenbasis=markenbasis,
+        )
+    except (RuntimeError, ValueError) as e:
+        return {"fehler": str(e), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "Ähnlichkeitsrecherche fehlgeschlagen; serverseitig prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
+
 
 if __name__=="__main__":
     mcp.run(transport="streamable-http")
