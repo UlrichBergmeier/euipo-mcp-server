@@ -27,7 +27,7 @@ def build_query(term: str, nice_class: int | None, status: str | None = "REGISTE
     if mark_basis!="ALL": clauses.append(f"markBasis=={mark_basis}")
     if nice_class is not None: clauses.append(f"niceClasses=={nice_class}")
     if status: clauses.append(f"status=={status}")
-    return ";".join(clauses)
+    return " and ".join(clauses)
 
 class EUIPOClient:
     def __init__(self):
@@ -40,7 +40,7 @@ class EUIPOClient:
             raise RuntimeError("EUIPO-Zugang ist serverseitig noch nicht konfiguriert.")
 
     async def _token(self, client: httpx.AsyncClient) -> str:
-        response=await client.post(TOKEN_URL,data={"grant_type":"client_credentials","scope":"uid"},auth=(self.client_id,self.client_secret))
+        response=await client.post(TOKEN_URL,data={"client_id":self.client_id,"client_secret":self.client_secret,"grant_type":"client_credentials","scope":"uid"})
         response.raise_for_status()
         token=response.json().get("access_token")
         if not token: raise RuntimeError("Kein EUIPO-Zugriffstoken")
@@ -61,7 +61,7 @@ class EUIPOClient:
         return {"recherchestand":"live durchgefuehrt","quelle":"EUIPO Trademark Search API 1.1.0","abgerufen_utc":datetime.now(timezone.utc).isoformat(),"query":query,"seite":data.get("page",page),"seitenumfang":data.get("size",size),"treffer_gesamt":data.get("totalElements"),"seiten_gesamt":data.get("totalPages"),"marken":data.get("trademarks",[]),"hinweis":"Klassen sind nur Vorfilter. Waren/DL und zeitliche Aussagekraft gesondert prüfen."}
 
     async def trademark_detail(self,application_number):
-        if not isinstance(application_number,str) or not re.fullmatch(r"[0-9]{1,16}",application_number):
+        if not isinstance(application_number,str) or not re.fullmatch(r"[0-9]{1,16}[A-Za-z]?",application_number):
             raise ValueError("Ungültige Anmeldenummer")
         async with httpx.AsyncClient(timeout=25.0) as client:
             token=await self._token(client)
