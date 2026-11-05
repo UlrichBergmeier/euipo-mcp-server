@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       AUTH0_ISSUER: "https://dev-yf816x77jyish1bb.eu.auth0.com/"
-      MCP_RESOURCE_URL: "https://mcp.trademark-assistant.de"
+      MCP_RESOURCE_URL: "https://mcp.trademark-assistant.de/mcp"
     networks:
       - default
       - traefik_shared
