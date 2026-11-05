@@ -1,9 +1,12 @@
-# LOCAL ONLY: no public port, no Traefik labels.
+# LOCAL ONLY: no public port and no Traefik labels. Never expose without security testing.
 name: euipo-mcp-local
 services:
   euipo-mcp:
     build: .
     restart: unless-stopped
+    environment:
+      AUTH0_ISSUER: "https://dev-yf816x77jyish1bb.eu.auth0.com/"
+      MCP_RESOURCE_URL: "https://mcp.trademark-assistant.de"
     ports:
       - "127.0.0.1:8765:8000"
     volumes:
