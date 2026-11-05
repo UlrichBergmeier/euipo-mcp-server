@@ -1,7 +1,9 @@
-"""LOCAL-ONLY MCP test server. Never publish without user OAuth protection."""
+"""Local-only EUIPO MCP service; require Auth0 bearer authorization for all tools."""
 from __future__ import annotations
 import json
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.settings import AuthSettings
+from auth0_verifier import Auth0TokenVerifier, AUTH0_ISSUER, RESOURCE_URL, REQUIRED_PERMISSION
 from core import create_variants, comparative_age
 from euipo import EUIPOClient
 from similarity import euipo_similarity_search
@@ -12,6 +14,13 @@ mcp=FastMCP(
     port=8000,
     stateless_http=True,
     json_response=True,
+    auth=AuthSettings(
+        issuer_url=AUTH0_ISSUER,
+        resource_server_url=RESOURCE_URL,
+        required_scopes=[REQUIRED_PERMISSION],
+        validate_token_resource=False,  # Auth0 audience is validated strictly in verifier.
+    ),
+    token_verifier=Auth0TokenVerifier(),
     instructions=(
         "Alle Waren und Dienstleistungen getrennt beurteilen. "
         "Keine Wegprägung interner Wortbestandteile. "
