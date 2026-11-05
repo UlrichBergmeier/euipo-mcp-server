@@ -1,7 +1,7 @@
-"""Read-only EUIPO Trademark Search API 1.1.0 client. Secrets are environment-only."""
+"""Read-only EUIPO Trademark Search API 1.1.0 client. Keys from protected files."""
 from __future__ import annotations
-import os
 import re
+from pathlib import Path
 from datetime import datetime, timezone
 import httpx
 
@@ -31,8 +31,11 @@ def build_query(term: str, nice_class: int | None, status: str | None = "REGISTE
 
 class EUIPOClient:
     def __init__(self):
-        self.client_id=os.getenv("EUIPO_CLIENT_ID","")
-        self.client_secret=os.getenv("EUIPO_CLIENT_SECRET","")
+        try:
+            self.client_id=Path("/run/secrets/euipo_client_id").read_text(encoding="utf-8").strip()
+            self.client_secret=Path("/run/secrets/euipo_client_secret").read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError):
+            raise RuntimeError("EUIPO-Zugang ist serverseitig noch nicht konfiguriert.") from None
         if not self.client_id or not self.client_secret:
             raise RuntimeError("EUIPO-Zugang ist serverseitig noch nicht konfiguriert.")
 
