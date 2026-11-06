@@ -23,7 +23,7 @@ EXISTING_TOOLS = {
 class ViewerRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_all_existing_tools_retained(self):
         names = {t.name for t in await mcp.list_tools()}
-        self.assertEqual(names, EXISTING_TOOLS | {"euipo_markenanzeige", "euipo_aehnlichkeitsgalerie"})
+        self.assertEqual(names, EXISTING_TOOLS | {"euipo_markenanzeige", "euipo_aehnlichkeitsgalerie", "euipo_klassendetails"})
 
     async def test_ui_tool_advertises_resource(self):
         tools = {t.name: t for t in await mcp.list_tools()}
