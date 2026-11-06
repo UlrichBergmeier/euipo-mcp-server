@@ -5,7 +5,6 @@ Run with the existing auth tests; no EUIPO credentials and no network calls.
 import unittest
 
 from mcp.types import CallToolResult
-from euipo import validate_application_number
 from server import euipo_markenanzeige, euipo_markenanzeige_ui, mcp
 
 
@@ -63,10 +62,8 @@ class ViewerRegistrationTests(unittest.IsolatedAsyncioTestCase):
             "ui/initialize", "ui/notifications/initialized",
             "ui/notifications/tool-input", "ui/notifications/tool-result",
             'name: "euipo_markenabbildung"', "tools/call",
-            "data:", "image/jpeg", "image/png", "readonly"[:1],
+            "data:", "image/jpeg", "image/png",
         ):
-            if expected == "r":  # Ignore the placeholder check.
-                continue
             self.assertIn(expected, html)
         self.assertNotIn("<script src=", html)
         self.assertNotIn("fetch(", html)
