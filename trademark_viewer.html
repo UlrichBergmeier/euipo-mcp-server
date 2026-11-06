@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EUIPO Markenabbildung</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--color-background-primary, #fff);
+           color: var(--color-text-primary, #20242a); }
+    .viewer { border: 1px solid var(--color-border-default, #d5d8dd); border-radius: 12px;
+              overflow: hidden; max-width: 800px; margin: 0 auto; }
+    .head, .toolbar { display: flex; gap: 10px; padding: 12px 14px; align-items: center;
+                      justify-content: space-between; flex-wrap: wrap; }
+    .head { border-bottom: 1px solid var(--color-border-default, #d5d8dd); }
+    .head strong { font-size: 15px; }
+    .number { font-variant-numeric: tabular-nums; font-size: 12px;
+              color: var(--color-text-secondary, #666); }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    button { font: inherit; border: 1px solid var(--color-border-default, #b7bec8);
+             background: var(--color-background-secondary, #f5f6f7);
+             color: var(--color-text-primary, #20242a); border-radius: 8px;
+             padding: 7px 11px; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #2368f5; outline-offset: 2px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button[aria-pressed="true"] { border-color: #5576c5; font-weight: 600; }
+    .stage { min-height: 240px; max-height: 560px; padding: 16px; display: flex;
+             justify-content: center; align-items: center; overflow: auto;
+             background: var(--color-background-secondary, #f8f9fa); }
+    img { max-width: 100%; max-height: 470px; width: auto; height: auto;
+          object-fit: contain; transform-origin: center center; }
+    .status { font-size: 13px; padding: 8px 14px; min-height: 24px;
+              color: var(--color-text-secondary, #666); }
+    .error { color: #b3261e; }
+    .foot { font-size: 12px; color: var(--color-text-secondary, #666);
+            border-top: 1px solid var(--color-border-default, #d5d8dd);
+            padding: 10px 14px; }
+    [hidden] { display: none !important; }
+    @media (prefers-reduced-motion: no-preference) { img { transition: transform 120ms ease; } }
+  </style>
+</head>
+<body>
+  <main class="viewer" aria-label="EUIPO Markenabbildung">
+    <div class="head">
+      <strong>EUIPO · Markenabbildung</strong>
+      <span id="number" class="number" aria-live="polite">Warte auf Markennummer</span>
+    </div>
+    <div class="toolbar">
+      <div class="controls" aria-label="Bildversion">
+        <button id="preview" type="button" aria-pressed="true" disabled>Vorschaubild</button>
+        <button id="original" type="button" aria-pressed="false" disabled>Original</button>
+      </div>
+      <div class="controls" aria-label="Zoom">
+        <button id="minus" type="button" aria-label="Verkleinern" disabled>−</button>
+        <span id="zoomlabel" aria-live="polite">100 %</span>
+        <button id="plus" type="button" aria-label="Vergrößern" disabled>+</button>
+        <button id="reset" type="button" disabled>Zurücksetzen</button>
+      </div>
+    </div>
+    <div class="stage" id="stage">
+      <img id="mark" alt="" hidden>
+      <span id="placeholder">Die Markenabbildung wird nach dem Verbinden geladen.</span>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite">Verbindung wird hergestellt …</div>
+    <div class="foot">Quelle: EUIPO Trademark Search. Die Anzeige dient ausschließlich der Markenrecherche.</div>
+  </main>
+  <script>
+  (() => {
+    "use strict";
+    const $ = id => document.getElementById(id);
+    const number = $("number"), status = $("status"), mark = $("mark"), placeholder = $("placeholder");
+    const preview = $("preview"), original = $("original"), plus = $("plus"), minus = $("minus"), reset = $("reset");
+    const validNumber = /^(?:[0-9]{9}|W[0-9]{8}[A-Z]?)$/;
+    const types = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+    let appReady = false, selected = "", mode = "preview", zoom = 1, requestSeq = 1, generation = 0;
+    const waiting = new Map(), cache = Object.create(null);
+    const setStatus = (message, error = false) => {
+      status.textContent = message; status.classList.toggle("error", error);
+    };
+    function request(method, params) {
+      const id = requestSeq++;
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          waiting.delete(id);
+          reject(new Error("Die Antwort der ChatGPT-App ist ausgeblieben."));
+        }, 25000);
+        waiting.set(id, {resolve, reject, timeout});
+        window.parent.postMessage({jsonrpc:"2.0", id, method, params}, "*");
+      });
+    }
+    function notify(method, params = {}) {
+      window.parent.postMessage({jsonrpc:"2.0", method, params}, "*");
+    }
+    function setZoom(value) {
+      zoom = Math.max(1, Math.min(3, value));
+      mark.style.transform = "scale(" + zoom + ")";
+      $("zoomlabel").textContent = Math.round(zoom * 100) + " %";
+    }
+    function setBusy(busy) {
+      preview.disabled = original.disabled = !selected || busy;
+      plus.disabled = minus.disabled = reset.disabled = mark.hidden || busy;
+      preview.setAttribute("aria-pressed", mode === "preview" ? "true" : "false");
+      original.setAttribute("aria-pressed", mode === "original" ? "true" : "false");
+    }
+    function showImage(data) {
+      // Only data from the authenticated MCP tool; never interpolate into HTML.
+      if (!data || !types.has(data.mime) || typeof data.base64 !== "string" ||
+          !/^[a-zA-Z0-9+/]+={0,2}$/.test(data.base64) || data.base64.length > 2800000) {
+        throw new Error("Die EUIPO-Antwort enthält kein unterstütztes Bildformat.");
+      }
+      mark.src = "data:" + data.mime + ";base64," + data.base64;
+      mark.alt = "Abbildung der EUIPO-Marke " + selected;
+      mark.hidden = false;
+      placeholder.hidden = true;
+      setZoom(1);
+      setStatus((mode === "preview" ? "Vorschaubild" : "Originalbild") + " geladen.");
+    }
+    async function loadImage(nextMode) {
+      if (!appReady || !selected) return;
+      mode = nextMode;
+      const thisGeneration = ++generation;
+      setBusy(true); setStatus("Markenabbildung wird abgerufen …");
+      try {
+        const key = selected + ":" + mode;
+        if (!cache[key]) {
+          const result = await request("tools/call", {
+            name: "euipo_markenabbildung",
+            arguments: {anmeldenummer: selected, vorschaubild: mode === "preview"}
+          });
+          if (result.isError || !Array.isArray(result.content)) {
+            throw new Error("Die Bildabfrage konnte nicht abgeschlossen werden.");
+          }
+          const image = result.content.find(item => item && item.type === "image");
+          if (!image) {
+            const err = result.content.find(item => item && item.type === "text");
+            throw new Error(err && err.text ? String(err.text).slice(0,250) : "Kein Markenbild vorhanden.");
+          }
+          cache[key] = {mime: image.mimeType, base64: image.data};
+        }
+        if (thisGeneration !== generation) return;
+        showImage(cache[key]);
+      } catch (e) {
+        if (thisGeneration !== generation) return;
+        mark.hidden = true; placeholder.hidden = false;
+        placeholder.textContent = "Markenabbildung nicht verfügbar.";
+        setStatus(e instanceof Error ? e.message : "Unbekannter Abruffehler", true);
+      } finally {
+        if (thisGeneration === generation) setBusy(false);
+      }
+    }
+    function selectNumber(candidate) {
+      if (typeof candidate !== "string" || !validNumber.test(candidate)) {
+        setStatus("Ungültige EUIPO-Anmeldenummer.", true);
+        return;
+      }
+      if (candidate !== selected) {
+        selected = candidate;
+        number.textContent = candidate;
+        mark.hidden = true; placeholder.hidden = false;
+        mode = "preview"; setZoom(1);
+        if (appReady) loadImage("preview");
+      }
+    }
+    window.addEventListener("message", event => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+      if (Object.hasOwn(message, "id") && waiting.has(message.id)) {
+        const entry = waiting.get(message.id);
+        waiting.delete(message.id); clearTimeout(entry.timeout);
+        if (message.error) entry.reject(new Error(message.error.message || "MCP-Fehler"));
+        else entry.resolve(message.result || {});
+        return;
+      }
+      if (message.method === "ui/notifications/tool-input") {
+        selectNumber(message.params?.arguments?.anmeldenummer);
+      } else if (message.method === "ui/notifications/tool-result") {
+        const data = message.params?.structuredContent;
+        if (data?.anmeldenummer) selectNumber(data.anmeldenummer);
+      } else if (message.method === "ui/resource-teardown" && Object.hasOwn(message, "id")) {
+        window.parent.postMessage({jsonrpc:"2.0", id:message.id, result:{}}, "*");
+      }
+    });
+    preview.addEventListener("click", () => loadImage("preview"));
+    original.addEventListener("click", () => loadImage("original"));
+    plus.addEventListener("click", () => setZoom(zoom + .25));
+    minus.addEventListener("click", () => setZoom(zoom - .25));
+    reset.addEventListener("click", () => setZoom(1));
+    mark.addEventListener("error", () => {
+      mark.hidden = true; placeholder.hidden = false; placeholder.textContent = "Bild kann nicht dargestellt werden.";
+      setStatus("Das Bildformat wurde durch den ChatGPT-Browser blockiert.", true);
+    });
+    (async () => {
+      try {
+        await request("ui/initialize", {
+          protocolVersion: "2026-01-26",
+          appInfo: {name:"EUIPO-Markenanzeige", version:"1.0.0"},
+          appCapabilities: {availableDisplayModes:["inline","fullscreen"]}
+        });
+        appReady = true;
+        notify("ui/notifications/initialized");
+        if (selected) loadImage("preview");
+        else setStatus("Warte auf eine EUIPO-Anmeldenummer …");
+      } catch (e) {
+        setStatus("ChatGPT unterstützt die Bildansicht in dieser Sitzung nicht.", true);
+      }
+    })();
+  })();
+  </script>
+</body>
+</html>
