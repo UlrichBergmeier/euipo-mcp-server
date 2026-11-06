@@ -4,7 +4,7 @@ WORKDIR /app
 RUN groupadd -r -g 10001 mcpuser && useradd -r -u 10001 -g mcpuser -d /app mcpuser
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY --chown=mcpuser:mcpuser server.py euipo.py core.py similarity.py auth0_verifier.py ./
+COPY --chown=mcpuser:mcpuser server.py euipo.py euipo_extensions.py core.py similarity.py auth0_verifier.py ./
 USER mcpuser
 EXPOSE 8000
 CMD ["python", "server.py"]
