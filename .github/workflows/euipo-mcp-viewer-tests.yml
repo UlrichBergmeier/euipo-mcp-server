@@ -39,7 +39,7 @@ jobs:
           import pathlib
           import re
           html = pathlib.Path("trademark_viewer.html").read_text()
-          match = re.search(r"<script>([\\s\\S]*?)</script>", html)
+          match = re.search(r"<script>(.*?)</script>", html, flags=re.DOTALL)
           if match is None:
               raise RuntimeError("JavaScript block not found")
           pathlib.Path("/tmp/euipo_viewer.js").write_text(match.group(1))
