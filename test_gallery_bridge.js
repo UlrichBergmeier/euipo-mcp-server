@@ -106,7 +106,7 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   await pause();
   const classCalls=calls.filter(x=>x.kind==="class");
   assert.equal(classCalls.length,1,"class retrieval is lazy");
-  assert.deepEqual(classCalls[0].referenzwaren,["Beton"]);
+  assert.equal(JSON.stringify(classCalls[0].referenzwaren),JSON.stringify(["Beton"]));
   assert.equal(classCalls[0].nizza_klasse,19);
   const details=classes.children[1];
   assert.equal(details.hidden,false,"class terms expanded");
