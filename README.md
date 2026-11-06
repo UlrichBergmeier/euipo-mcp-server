@@ -1,105 +1,97 @@
-# EUIPO-MCP-Server – OAuth-Testversion v0.5 (nur lokal)
+# EUIPO-MCP-Server – Trademark Search API 1.1.0
 
-**Wichtig:** Dieses Repository enthält ausschließlich Quellcode. Keine echten API-Schlüssel, Mandantendaten oder Zugangstoken ablegen.
+Geschützter Read-only-MCP-Server auf Hostinger. Auth0-OAuth, Benutzerrollen,
+HTTPS via Traefik und EUIPO-Client-Credentials (nur in lokalen Secret-Dateien)
+bleiben voneinander getrennt.
 
-## Sicherheitsstatus
+**Aktueller Produktivstand:** Die bisherige ChatGPT-/Auth0-Anmeldung und
+EUIPO-Verbindung wurden erfolgreich eingerichtet. Der neue Funktionsumfang
+liegt zunächst nur auf dem Entwicklungszweig
+`feature/euipo-trademark-search-1-1-extensions` – **noch nicht auf Hostinger
+bereitgestellt**.
 
-Diese Version dient nur zum **lokalen Funktionstest auf dem Hostinger-VPS**. Die Verbindung von ChatGPT zu diesem MCP-Dienst ist noch **nicht** durch OAuth abgesichert. Deshalb darf der Dienst keinesfalls öffentlich über Traefik, einen offenen Port oder eine öffentliche URL erreichbar gemacht werden.
+## Schnittstellen und Werkzeuge
 
-Die Docker-Konfiguration bindet den MCP-Port ausschließlich an `127.0.0.1:8765`. Sie enthält keine Traefik-Labels und verändert die bestehende n8n-Installation nicht.
+Die Implementierung basiert auf der hochgeladenen Original-OpenAPI-Datei
+`trademark-search_1.1.0.json` (OpenAPI 3.0). Der API-Client ruft ausschließlich
+den offiziellen EUIPO-Server unter
+`https://api.euipo.europa.eu/trademark-search` auf.
 
-## Installation (erst nach gemeinsamer Überprüfung)
+| MCP-Werkzeug | Zweck |
+| --- | --- |
+| `markenvarianten_erstellen` | Zeichen-/Anmeldestrategie; keine Registerabfrage |
+| `alter_vergleichsmarke` | Alter einer Vergleichsanmeldung |
+| `euipo_wortmarkenrecherche` | Wortmarken; **alle Registerstatus als Standard**, ausdrücklich `REGISTERED` nur bei Wunsch |
+| `euipo_markendetails` | **Vollständiger** Registerdatensatz inkl. Prioritäten, Parteien, Widersprüchen, Löschungen und Beschwerden (soweit vorhanden) |
+| `euipo_aehnlichkeitsrecherche` | Begrenzte Kandidatensuche nach indexiertem verbalElement für Wortmarken **und** andere Markenformen, auch `FIGURATIVE` |
+| `euipo_erweiterte_markenrecherche` | **Neu:** Wortbestandteile, Nizza-Klassen ANY/ALL, Statuslisten, Markenformen, Markenbasis, Anmelder, Vertreter, Anmeldedaten und Sortierung |
+| `euipo_markenabbildung` | **Neu:** Geschütztes Thumbnail (max. 512 KB) oder Originalbild (max. 2 MB) als MCP-Bildinhalt |
 
-```bash
-cd /opt/euipo-mcp
-git clone https://github.com/UlrichBergmeier/euipo-mcp-server.git .
-docker compose config
-docker compose up -d --build
-docker compose ps
-```
+**Nicht integriert:** Sound, Video und 3D-Modelle sind als nachrangige
+Erweiterungsmöglichkeit vorgesehen; sie dürfen nicht stillschweigend als
+verfügbar dargestellt werden.
 
-**Geheimnisse ausschließlich lokal auf dem VPS speichern.** Die nächste Entwicklungsstufe liest die API-Zugangsdaten ausschließlich aus `/run/secrets/euipo_client_id` und `/run/secrets/euipo_client_secret`. Diese werden als schreibgeschützte Datei-Mounts aus `private/` übergeben und tauchen nicht als Klartext in `docker inspect` oder `docker compose config` auf.
+Die erweiterte Recherche liefert nur eine Ergebnisseite pro Aufruf.
+Die Ähnlichkeitssuche ist eine begrenzte **Kandidatenrecherche**, keine
+vollständige Kollisionsrecherche. Klangliche, begriffliche oder rein bildliche
+Ähnlichkeiten werden nicht vollautomatisch erkannt. Nizza-Klassen sind nur
+Vorfilter; Waren-/Dienstleistungsverzeichnisse müssen einzeln geprüft werden.
+Unbekannte oder streitige Registerstatus bleiben manuell zu klären.
 
-**Wichtige Reihenfolge für ein Update von v0.4:**
+Internationale Anmeldenummern: `W` + acht Ziffern + optionaler Großbuchstabe
+(z. B. `W00843427A`), EU-Anmeldenummern: exakt neun Ziffern
+(z. B. `019430321`).
 
-```bash
-cd /opt/euipo-mcp
-git pull --ff-only
-bash scripts/configure_secrets.sh
-docker compose config
-docker compose build euipo-mcp
-docker compose up -d --no-deps euipo-mcp
-```
+## Sicherheit und Deployment
 
-Das Skript fragt API Key und API Secret verdeckt in der Hostinger-Webkonsole ab. **Niemals Zugangsdaten in ChatGPT, GitHub, Screenshots oder normale Shell-Befehle kopieren.** Die Dateien werden mit Besitzer root, Gruppe GID 10001, Dateirechten 0640 in einem Verzeichnis mit Modus 0700 gespeichert. Docker bindet die Dateien einzeln als read-only ein. Auf dem Host kann root sie weiterhin lesen; vollständiger Schutz gegen einen kompromittierten VPS ist damit nicht möglich. Keine Secrets in Git versionieren.
+- Basis-`compose.yaml` veröffentlicht nur `127.0.0.1:8765`, die zusätzliche
+  Datei `compose.https.yaml` legt die Traefik-HTTPS-Route an.
+- Auth0-Token werden auf RS256-Signatur, Issuer, Audience, Ablauf und
+  `read:trademarks` geprüft. Beide bestehenden Workspace-Verbindungen
+  verwenden denselben MCP-Endpunkt
+  `https://mcp.trademark-assistant.de/mcp`.
+- EUIPO-Client-ID und Client-Secret ausschließlich über die bestehenden,
+  schreibgeschützten Bind-Mounts in `/run/secrets/`. Keine Schlüssel in Git,
+  Kommandozeilen oder Screenshots.
+- Bildabruf erfolgt serverseitig über EUIPO-Authentifizierung. Es werden keine
+  Token-URLs an ChatGPT zurückgegeben; Größen- und Medienformatgrenzen greifen.
+- Unverändert bleibt die n8n-/Traefik-Installation. Nach einem GitHub-Commit
+  erfolgt **kein automatisches Deployment**.
 
-Die Implementierung der offiziellen EUIPO-Endpunkte muss vor einer echten Produktivabfrage gegen die Original-API-Spezifikation abgeglichen werden. Keine Freigabe von Traefik ohne OAuth-Schutz.
-
-## Funktionen
-
-- `markenvarianten_erstellen`: Wort-, Bild- und Wort-/Bildmarkenkandidaten als reine fachliche Hilfestellung.
-- `alter_vergleichsmarke`: Alter einer Registeranmeldung.
-- `euipo_wortmarkenrecherche`: Read-only EUIPO-API-Abfrage für Wortmarken.
-- `euipo_markendetails`: Read-only Detailabfrage für eine Anmeldenummer.
-- `euipo_aehnlichkeitsrecherche`: Begrenzte Kandidatensuche nach vollständigem Wortlaut und bis zu fünf zusätzlichen Suchvarianten. Berücksichtigt potenziell lebende Registerstatus und markiert unklare Statusfälle. **Keine vollständige Ähnlichkeits- oder Kollisionsrecherche.**
-
-Die EUIPO-Suche und der Detailabruf wurden am 05.11.2026 über Hostinger mit SYSTEMBETON live getestet. Die Ähnlichkeitsrecherche ist eine begrenzte Teilrecherche, keine vollständige Kollisionsprüfung oder rechtliche Eintragungsentscheidung.
-
-## Vor dem Produktivbetrieb erforderlich
-
-1. Separate Benutzerauthentifizierung für ChatGPT–MCP (OAuth inklusive Berechtigungsprüfung, Auth-Code + PKCE).
-2. Rate-Limiting, Secret-Management, Logging-Konzept und Abwehr unberechtigter Zugriffe.
-3. HTTPS/TLS über Traefik, anschließend gesonderte Konnektivitäts- und Berechtigungstests.
-4. Kontrollierte Live-Abfrage der EUIPO-API, Prüfung der Antwortfelder und der tatsächlich freigegebenen Nutzung.
-
-**Nicht** die bestehende Compose-Anwendung `root` oder deren n8n-Container verändern.
-
-## Erweiterung v0.4 – Status- und Ähnlichkeitskandidaten
-Die neue Funktion recherchiert Wordmarks über die bisherigen EUIPO-Teilstringabfragen. Sie fragt ausdrücklich **ohne Statusfilter** ab, um auch laufende Anmeldungen zu erfassen. Treffer werden nach Anmeldenummer zusammengeführt und in „potenziell lebend“, „laut Status nicht lebend“ und „Status manuell prüfen“ gruppiert.
-
-- Maximal 3 Seiten je Suchbegriff, maximal 6 Suchbegriffe einschließlich Ausgangszeichen, 10–100 Einträge je Seite.
-- Die Suche kann bei großen Treffermengen unvollständig sein; sie dokumentiert deshalb den Suchumfang und eventuelle Abfragefehler.
-- Schriftbildliche technische Ähnlichkeit wird über eine einfache Zeichenfolgenmetrik sortiert, **nicht** als juristische Verwechslungsgefahr eingestuft.
-- Für klangliche und begriffliche Ähnlichkeiten müssen zusätzliche Suchbegriffe fachlich gebildet und übergeben werden.
-- Treffer für nationale Marken in Europa sind nicht vollständig erfasst. Rechtsstand und tatsächliches Waren-/Dienstleistungsverzeichnis gehören in eine gesonderte juristische Prüfung.
-
-### Offlinetests
+## Offline-Tests ohne EUIPO-Zugangsdaten
 
 ```bash
-python3 -m unittest -v test_similarity.py
+python -m unittest -v test_euipo test_similarity test_auth test_extensions
 ```
 
-### Sicheres späteres Update auf Hostinger
+Tests für Auth0 benötigen die Abhängigkeiten aus `requirements.txt`;
+die Tokenprüfungen verwenden einen lokalen Testschlüssel und kein Netzwerk.
+Die Endpunkt-Mocks testen Filter-Sicherheit, Suchparameter, IR-Nummern,
+Bildabruf und Größenbegrenzung.
 
-Keine direkte automatische Live-Veröffentlichung: Die Änderungen liegen zunächst ausschließlich in GitHub. Nach Prüfung und Sicherung erfolgt das Update kontrolliert im lokalen Verzeichnis `/opt/euipo-mcp` (mit `git pull --ff-only`, Docker-Neubau und Statusprüfung). Der bereits laufende Container wird **nicht** durch den GitHub-Commit verändert.
+## Kontrollierter Freigabe- und Aktualisierungsablauf
 
-## Auth0-OAuth-Absicherung (v0.5 – noch nicht auf Hostinger freigegeben)
+1. Branch auf GitHub reviewen und erst nach Tests nach `main` übernehmen.
+2. Auf Hostinger im Verzeichnis `/opt/euipo-mcp` nach dem Merge
+   `git pull --ff-only` ausführen. Bestehende Secret-Dateien nicht ändern.
+3. Mit den beiden Compose-Dateien `config --quiet` und
+   `build euipo-mcp` ausführen; den laufenden Container dabei noch nicht
+   ersetzen.
+4. Offline-Tests mit einem separaten Docker-Prozess starten, einschließlich
+   `test_extensions.py` (bei Bedarf als schreibgeschütztes Volume einhängen).
+5. Erst nach bestandenen Tests:
+   `docker compose -f compose.yaml -f compose.https.yaml up -d --no-deps euipo-mcp`.
+6. HTTPS/OAuth-Negativtests (`401` ohne/mit ungültigem Token;
+   `200` für `/.well-known/oauth-protected-resource/mcp`),
+   **einen autorisierten ChatGPT-Aufruf** und reale EUIPO-Abfragen
+   einschließlich Bild- bzw. Detailabruf testen.
+7. Nach erfolgreichem Test die neuen MCP-Werkzeuge im ChatGPT-Plugin
+   aktualisieren/synchronisieren (falls nicht automatisch erkannt).
 
-Die neue Serverversion verwendet `AuthSettings` und `Auth0TokenVerifier`. Sie akzeptiert ausschließlich RS256-signierte Auth0-Zugriffstokens mit `iss` unseres EU-Tenants, `aud` der EUIPO-MCP-API, nicht abgelaufenem `exp`, vorhandenem `sub`/`azp` und `permissions: ["read:trademarks"]`. Alle Fehler verweigern den Zugriff, einschließlich fehlender Netzwerkverbindung zum JWKS-Endpunkt. Der JWT-Inhalt, das EUIPO-Secret und der Bearer-Token dürfen niemals protokolliert werden.
+**Rollback:** Zur vorherigen geprüften Git-Version zurückkehren und
+das frühere Docker-Image mit denselben Compose-Dateien erneut starten.
+Niemals bestehende Secret-Dateien überschreiben.
 
-**Keine neue OAuth-API-Key-Datei erforderlich.** Die Auth0-Issueradresse und die API-Audience sind öffentliche Konfigurationsangaben; die bereits lokal geschützten EUIPO-Keys bleiben unverändert.
-
-Wichtig: Auth0-Tokenprüfung und das MCP-Server-OAuth-Discovery sind nur eine **Vorbereitung**. OpenAI/ChatGPT und Auth0 müssen noch end-to-end getestet werden; auch die von Auth0 ausgegebenen Metadaten (PKCE, CIMD, Authorization Response Issuer) sind zu prüfen. Die bisherige Hostinger-Installation bleibt lokal; keine Traefik-Labels aktivieren, ehe die Negativtests erfolgreich sind.
-
-### Kontrolliertes Upgrade vom Hostinger-VPS
-
-1. `cd /opt/euipo-mcp && git pull --ff-only`
-2. `docker compose config --quiet && docker compose build euipo-mcp`
-3. Vor dem Container-Update alle Offline-Tests in einem **separaten** Testcontainer starten:
-
-```bash
-docker run --rm --network none -e AUTH0_ISSUER=https://dev-yf816x77jyish1bb.eu.auth0.com/ -e MCP_RESOURCE_URL=https://mcp.trademark-assistant.de -v /opt/euipo-mcp/test_auth.py:/app/test_auth.py:ro euipo-mcp-local-euipo-mcp python -m unittest -v test_auth
-```
-
-4. Nur nach bestandenen Tests: `docker compose up -d --no-deps euipo-mcp`
-5. Geschützte lokale Endpunkte überprüfen:
-
-```bash
-curl -i -m 10 http://127.0.0.1:8765/mcp
-curl -i -m 10 -H 'Authorization: Bearer invalid' http://127.0.0.1:8765/mcp
-curl -i -m 10 http://127.0.0.1:8765/.well-known/oauth-protected-resource
-```
-
-Erwartung: Beide Anfragen ohne gültiges Token werden mit **401 Unauthorized** zurückgewiesen, die Metadatenabfrage liefert eine maschinenlesbare URL des Auth0-Issuers und den Scope. Der konkrete Pfad der Metadaten kann je nach MCP-SDK-Stand abweichen. Keine rückwirkende Aussage über bestehende n8n/Traefik-Konfiguration.
-
-**Für die erste Live-OAuth-Anmeldung** muss Auth0 eine berechtigte Anwendung registrieren und einen User-Delegated Access Token mit `permissions` ausgeben. Die Auth0-E-Mail-Bestätigung und die Rollenvergabe allein reichen nicht aus.
+Die EUIPO-Registerdaten sind keine rechtliche Bewertung oder verbindliche
+Eintragungsentscheidung. Für Mandanten ist eine abschließende rechtliche
+Zeichen- und Warenähnlichkeitsprüfung erforderlich.
