@@ -1,11 +1,13 @@
 """Local-only EUIPO MCP service; require Auth0 bearer authorization for all tools."""
 from __future__ import annotations
 import json
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP, Image
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from mcp.server.auth.settings import AuthSettings
 from auth0_verifier import Auth0TokenVerifier, AUTH0_ISSUER, RESOURCE_URL, REQUIRED_PERMISSION
 from core import create_variants, comparative_age
-from euipo import EUIPOClient
+from euipo import EUIPOClient, validate_application_number
 from euipo_extensions import advanced_search, get_trademark_image
 from similarity import euipo_similarity_search
 
@@ -181,6 +183,68 @@ async def euipo_markenabbildung(anmeldenummer: str, vorschaubild: bool = True):
             "fehler": "Markenabbildung nicht verfügbar; serverseitig prüfen",
             "recherchestand": "nicht durchgeführt",
         }
+
+
+
+# MCP Apps: standalone UI-bound render tool. The existing seven tools and
+# OAuth validation remain unchanged. The iframe fetches image bytes with the
+# existing euipo_markenabbildung tool through the authenticated MCP bridge.
+_VIEWER_URI = "ui://euipo/markenanzeige-v1.html"
+
+@mcp.resource(
+    _VIEWER_URI,
+    name="euipo-markenanzeige",
+    title="EUIPO Markenabbildung",
+    mime_type="text/html;profile=mcp-app",
+    meta={
+        "ui": {"csp": {"connectDomains": [], "resourceDomains": []}},
+        "openai/ui": {"availableDisplayModes": ["inline", "fullscreen"]},
+    },
+)
+def euipo_markenanzeige_ui() -> str:
+    """Trusted, static EUIPO image viewer, without API credentials or external assets."""
+    return Path(__file__).with_name("trademark_viewer.html").read_text(encoding="utf-8")
+
+
+@mcp.tool(
+    name="euipo_markenanzeige",
+    title="EUIPO Markenabbildung im Chat anzeigen",
+    description=(
+        "Zeige eine EUIPO-Markenabbildung als interaktive MCP-App direkt im Chat an. "
+        "Verwenden, wenn die Benutzerin oder der Benutzer ein Markenbild sehen möchte. "
+        "Die Ansicht lädt zunächst ein Vorschaubild und kann das Original darstellen. "
+        "Wenn der Chat keine MCP Apps unterstützt, ist nur eine textuelle Bestätigung möglich."
+    ),
+    structured_output=False,
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False),
+    meta={
+        "ui": {"resourceUri": _VIEWER_URI, "visibility": ["model", "app"]},
+        "openai/outputTemplate": _VIEWER_URI,
+        "openai/toolInvocation/invoking": "EUIPO-Markenbild wird geöffnet …",
+        "openai/toolInvocation/invoked": "EUIPO-Bildansicht bereitgestellt",
+    },
+)
+def euipo_markenanzeige(anmeldenummer: str) -> CallToolResult:
+    """Bereite die geschützte MCP-App-Bildanzeige vor; rendert nicht in Text-Clients."""
+    try:
+        number = validate_application_number(anmeldenummer)
+    except ValueError:
+        return CallToolResult(
+            content=[TextContent(type="text", text="Ungültige EUIPO-Anmeldenummer.")],
+            isError=True,
+        )
+    return CallToolResult(
+        content=[TextContent(
+            type="text",
+            text=(
+                f"EUIPO-MCP-Bildansicht für die Marke {number} angefordert. "
+                "Die Abbildung wird nur angezeigt, wenn der Chat MCP Apps darstellen "
+                "und den geschützten Bildabruf autorisieren kann. "
+                "Ohne sichtbare Ansicht bitte nicht behaupten, das Bild sei angezeigt worden."
+            ),
+        )],
+        structuredContent={"anmeldenummer": number},
+    )
 
 
 if __name__=="__main__":
