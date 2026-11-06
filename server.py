@@ -10,6 +10,7 @@ from core import create_variants, comparative_age
 from euipo import EUIPOClient, validate_application_number
 from euipo_extensions import advanced_search, get_trademark_image
 from similarity import euipo_similarity_search
+from class_goods import parse_class_goods, validate_reference_terms
 
 mcp=FastMCP(
     "Markenpruefassistent",
@@ -293,9 +294,11 @@ async def euipo_aehnlichkeitsgalerie(
     weitere_suchbegriffe: list[str] | None = None,
     nur_potenziell_lebende: bool = True,
     markenbasis: str = "ALL",
+    referenzwaren_dienstleistungen: list[str] | None = None,
 ) -> CallToolResult:
     """Erstellt eine begrenzte visuelle Kandidatenliste, ohne Bilddaten in JSON auszugeben."""
     try:
+        references = validate_reference_terms(referenzwaren_dienstleistungen)
         result = await euipo_similarity_search(
             zeichen=zeichen,
             nizza_klasse=nizza_klasse,
@@ -333,6 +336,7 @@ async def euipo_aehnlichkeitsgalerie(
         "kandidaten": candidates[:limit],
         "abfragefehler": len(result["abfragefehler"]),
         "vollstaendigkeit": result["vollstaendigkeit"],
+        "referenzwaren_dienstleistungen": references,
     }
     message = (
         f"EUIPO-Ähnlichkeitsgalerie für {result['zeichen']}: "
@@ -348,6 +352,39 @@ async def euipo_aehnlichkeitsgalerie(
         content=[TextContent(type="text", text=message)],
         structuredContent=summary,
     )
+
+
+
+
+@mcp.tool(
+    name="euipo_klassendetails",
+    title="EUIPO: tatsächliche Waren/Dienstleistungen je Klasse",
+    description=(
+        "Rufe für eine konkrete EUIPO-Marke und Nizza-Klasse die tatsächlich im "
+        "Register eingetragenen Waren/Dienstleistungen bevorzugt auf Deutsch ab. "
+        "Optional aus Referenzwaren die technisch textähnlichste Position ermitteln. "
+        "Diese technische Vorauswahl ist ausdrücklich keine rechtliche "
+        "Ähnlichkeitsbewertung; fremdsprachige Texte nicht als Deutsch ausgeben."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
+)
+async def euipo_klassendetails(
+    anmeldenummer: str,
+    nizza_klasse: int,
+    referenzwaren: list[str] | None = None,
+) -> dict:
+    """Gezielter, authentifizierter Detailabruf erst nach dem Klassen-Klick."""
+    try:
+        validate_application_number(anmeldenummer)
+        if type(nizza_klasse) is not int or not 1 <= nizza_klasse <= 45:
+            raise ValueError("Nizza-Klasse muss zwischen 1 und 45 liegen")
+        validate_reference_terms(referenzwaren)
+        detail = await EUIPOClient().trademark_detail(anmeldenummer)
+        return parse_class_goods(detail, nizza_klasse, referenzwaren)
+    except (RuntimeError, ValueError):
+        return {"fehler": "Waren-/Dienstleistungsverzeichnis nicht verfügbar oder Eingabe ungültig."}
+    except Exception:
+        return {"fehler": "EUIPO-Detailabruf fehlgeschlagen; serverseitig prüfen."}
 
 
 if __name__=="__main__":
