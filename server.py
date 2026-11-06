@@ -275,9 +275,14 @@ def euipo_aehnlichkeitsgalerie_ui() -> str:
     description=(
         "Führe die bestehende begrenzte EUIPO-Ähnlichkeitsrecherche durch und zeige "
         "ihre Kandidaten mit Registerstatus, Klassen und tatsächlichen Markenabbildungen "
-        "in einer Vergleichsgalerie direkt in ChatGPT an. Nur verfügbare Abbildungen "
-        "laden; Wortmarken bleiben Wortmarken. Weder Vollständigkeit noch "
-        "rechtliche Verwechslungsgefahr behaupten."
+        "in einer Vergleichsgalerie direkt in ChatGPT an. Klassen sind anklickbar; "
+        "dort werden tatsächliche EUIPO-Waren-/DL-Verzeichnisse angezeigt. "
+        "Wenn vom Nutzer konkrete Waren oder Dienstleistungen vorgegeben sind, "
+        "diese in referenzwaren_dienstleistungen übergeben: Nur dann wird pro Klasse "
+        "ein technisch textähnlichster Kandidat markiert. "
+        "Nicht die gesuchten Markennamen als Waren unterstellen. Nur verfügbare "
+        "Abbildungen laden; Wortmarken bleiben Wortmarken. Keine Vollständigkeit "
+        "oder rechtliche Warenähnlichkeit bzw. Verwechslungsgefahr behaupten."
     ),
     structured_output=False,
     annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
