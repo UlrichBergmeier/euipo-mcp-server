@@ -105,6 +105,50 @@ bleiben unverändert. Änderungen erfolgen zunächst ausschließlich auf dem
 Entwicklungszweig. Produktive Übernahme erst nach Offline-Tests,
 Sicherheitstests und einer tatsächlich sichtbaren Galerie in ChatGPT.
 
+
+## Klassenverzeichnisse und technische Waren-/Dienstleistungs-Vorauswahl (in Entwicklung)
+
+Eine zusätzliche schreibfreie Funktion `euipo_klassendetails(anmeldenummer,
+nizza_klasse, referenzwaren)` lädt die Klasse **erst nach dem Klick** in der
+Vergleichsgalerie aus dem unveränderten EUIPO-Registerdetail-Endpunkt.
+Die Klasse wird aus der EUIPO-Struktur `goodsAndServices[].description[]
+{language,terms}` entnommen. Der bereits bestehende EUIPO-Client sendet
+`Accept-Language: de`; vor dem Anzeigen wird geprüft, ob die Antwort
+tatsächlich `language="de"` enthält.
+
+- Deutsche Registerfassung vorhanden: tatsächliche Begriffe im Wortlaut,
+  keine Ergänzung/Kürzung oder Formulierung anhand bloßer Klassenüberschriften.
+- Keine deutsche Registerfassung: Original-/verfügbare Sprache mit deutlicher
+  Kennzeichnung; **keine erfundene oder fälschlich amtlich genannte Übersetzung**.
+  Für eine vollständige Übersetzung aus anderen Sprachen ist ein verifizierter
+  EUIPO-Goods-And-Services-Übersetzungsaufruf separat zu prüfen.
+- Jede Klasse hat eine eigene anklickbare Schaltfläche. Die Antwort zeigt
+  vollständig die im EUIPO-Register gelieferten Positionen dieser Klasse.
+- Nur wenn bei `euipo_aehnlichkeitsgalerie` zusätzlich das Feld
+  `referenzwaren_dienstleistungen` angegeben wurde, erfolgt je Klasse
+  die **technische** Vorauswahl einer Position anhand normalisierter
+  Wort-/Zeichenfolgenähnlichkeit. Der gefundene Eintrag, der Referenzbegriff
+  und der technische Prozentsatz erscheinen hervorgehoben.
+- Die Vorauswahl ist **keine semantische Prüfung und keine markenrechtliche
+  Waren-/Dienstleistungsähnlichkeitsbewertung**. Zweck, Verwendung,
+  Vertriebswege, Wettbewerb, Komplementarität oder Herkunft werden damit
+  nicht beurteilt. Die Position darf nicht ohne juristische Prüfung als
+  „rechtlich ähnlichste Ware/Dienstleistung“ bezeichnet werden.
+- Ohne Vergleichswaren wird ausdrücklich keine „ähnlichste“ Position
+  ausgegeben. Die bloße Markenbezeichnung `BETON` wird nicht automatisch
+  als beanspruchte Ware unterstellt.
+- Auth0, Secrets, Markenbildwerkzeug und die bisherige Ähnlichkeitsrecherche
+  bleiben unverändert; es kommt nur ein gezielter read-only Toolaufruf hinzu.
+  Registertexte werden weder dauerhaft gespeichert noch an eine externe
+  Übersetzungs-API gesendet.
+
+**Beispiel zur Verwendung nach Freigabe**:
+`euipo_aehnlichkeitsgalerie(zeichen="BETON", nizza_klasse=19,
+referenzwaren_dienstleistungen=["Beton"])`.
+
+Die Funktion bleibt bis zu den automatischen Tests sowie der sichtbaren
+Klassenprüfung in ChatGPT ausschließlich im Entwicklungszweig.
+
 ## Sicherheit und Deployment
 
 - Basis-`compose.yaml` veröffentlicht nur `127.0.0.1:8765`, die zusätzliche
@@ -124,7 +168,7 @@ Sicherheitstests und einer tatsächlich sichtbaren Galerie in ChatGPT.
 ## Offline-Tests ohne EUIPO-Zugangsdaten
 
 ```bash
-python -m unittest -v test_euipo test_similarity test_auth test_extensions test_viewer test_gallery
+python -m unittest -v test_euipo test_similarity test_auth test_extensions test_viewer test_gallery test_class_goods
 ```
 
 Tests für Auth0 benötigen die Abhängigkeiten aus `requirements.txt`;
