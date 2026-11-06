@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EUIPO Ähnlichkeitsrecherche – Vergleichsgalerie</title>
+<style>
+:root {color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;padding:14px;color:var(--color-text-primary,#20242a);background:var(--color-background-primary,#fff)}
+main{max-width:1100px;margin:0 auto}
+.header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+h1{font-size:17px;font-weight:650;margin:0}
+#meta,#status,#disclaimer,.foot{font-size:12px;color:var(--color-text-secondary,#555e68)}
+#meta{margin:5px 0 12px}
+.controls{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 0}
+button{font:inherit;color:inherit;background:var(--color-background-secondary,#f5f6f7);border:1px solid var(--color-border-default,#cbd1d8);border-radius:8px;padding:6px 10px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
+#page{font-size:12px;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px}
+.card{border:1px solid var(--color-border-default,#d5d8dd);border-radius:10px;overflow:hidden;min-width:0}
+.figure{height:160px;display:flex;align-items:center;justify-content:center;padding:10px;background:var(--color-background-secondary,#f7f8fa);border-bottom:1px solid var(--color-border-default,#d5d8dd)}
+.figure img{max-width:100%;max-height:140px;object-fit:contain}
+.figure .empty{font-size:12px;color:var(--color-text-secondary,#606772);text-align:center}
+.info{padding:10px;display:grid;gap:5px;font-size:12px}
+.name{font-size:14px;font-weight:650;overflow-wrap:anywhere}
+.muted{color:var(--color-text-secondary,#606772)}
+.row{display:flex;justify-content:space-between;gap:6px}
+.actions{display:flex;gap:6px;padding:0 10px 10px}
+.actions button{font-size:12px}
+#disclaimer{border-top:1px solid var(--color-border-default,#d5d8dd);padding-top:10px;margin-top:12px;line-height:1.5}
+#status{min-height:20px;margin:4px 0;color:var(--color-text-secondary,#606772)}
+.error{color:#b3261e!important}
+#overlay[hidden],img[hidden]{display:none!important}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:12px;z-index:50}
+#overlay .panel{background:var(--color-background-primary,#fff);color:var(--color-text-primary,#20242a);border-radius:12px;padding:14px;max-width:min(94vw,1000px);max-height:94vh;overflow:auto;min-width:min(90vw,440px)}
+#overlay .panelhead{display:flex;align-items:center;justify-content:space-between;gap:15px}
+#overlay img{display:block;max-height:70vh;max-width:100%;object-fit:contain;margin:12px auto}
+#overlay .caption{font-size:13px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+  <div class="header"><h1>EUIPO · Vergleichsmarken mit Abbildungen</h1><span id="status" role="status" aria-live="polite">Verbindung wird aufgebaut …</span></div>
+  <p id="meta">Warte auf das Rechercheergebnis …</p>
+  <div class="controls">
+    <span id="page">–</span>
+    <div><button id="prev" type="button" disabled>Zurück</button> <button id="next" type="button" disabled>Weitere Treffer</button></div>
+  </div>
+  <section id="gallery" class="grid" aria-label="Recherchekandidaten"></section>
+  <p id="disclaimer">EUIPO-Teilrecherche: Die Anzeige ist keine vollständige Kollisionsrecherche und keine rechtliche Verwechslungsgefahrbeurteilung. Die Nizza-Klasse ist nur ein Vorfilter. Grafische Gestaltungen müssen im Einzelfall gewürdigt werden.</p>
+</main>
+<div id="overlay" role="dialog" aria-modal="true" aria-label="Markenabbildung in Originalgröße" hidden>
+  <div class="panel">
+    <div class="panelhead"><strong>EUIPO-Markenabbildung</strong><button id="close" type="button">Schließen</button></div>
+    <div id="largeStatus" class="caption">Originalbild wird geladen …</div>
+    <img id="largeImage" alt="" hidden>
+  </div>
+</div>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const grid = $("gallery"), validNumber = /^(?:[0-9]{9}|W[0-9]{8}[A-Z]?)$/;
+  const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+  const pageSize = 8;
+  let appReady = false, data = null, page = 0, serial = 0, requestId = 1, viewerSerial = 0;
+  const pending = new Map(), imageCache = new Map();
+  function setStatus(msg, isError = false) {
+    $("status").textContent = msg;
+    $("status").classList.toggle("error", isError);
+  }
+  function elt(tag, className, textValue) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (textValue !== undefined) node.textContent = String(textValue);
+    return node;
+  }
+  function request(method, params) {
+    const id = requestId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("Keine Antwort der ChatGPT-App innerhalb von 25 Sekunden."));
+      }, 25000);
+      pending.set(id, {resolve, reject, timer});
+      window.parent.postMessage({jsonrpc:"2.0", id, method, params}, "*");
+    });
+  }
+  function notify(method, params = {}) {
+    window.parent.postMessage({jsonrpc:"2.0", method, params}, "*");
+  }
+  function imageData(result) {
+    if (!result || result.isError || !Array.isArray(result.content)) return null;
+    const item = result.content.find(x => x && x.type === "image");
+    if (!item || !imageTypes.has(item.mimeType) ||
+        typeof item.data !== "string" || item.data.length > 2800000 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(item.data)) return null;
+    return "data:" + item.mimeType + ";base64," + item.data;
+  }
+  async function loadImage(number, original = false) {
+    const key = number + ":" + (original ? "original" : "preview");
+    if (imageCache.has(key)) return imageCache.get(key);
+    const result = await request("tools/call", {
+      name: "euipo_markenabbildung",
+      arguments: {anmeldenummer:number, vorschaubild:!original}
+    });
+    const src = imageData(result);
+    imageCache.set(key, src);
+    return src;
+  }
+  function normalize(input) {
+    if (!input || !Array.isArray(input.kandidaten) || typeof input.zeichen !== "string") {
+      throw new Error("Das Ergebnis der Markenrecherche konnte nicht gelesen werden.");
+    }
+    // Never trust arbitrary object properties from the register as HTML or URLs.
+    return {
+      zeichen:input.zeichen.slice(0,120),
+      klasse:input.nizza_klasse,
+      gesamt:Number(input.gesamt_kandidaten) || 0,
+      shown:Math.min(input.kandidaten.length,40),
+      stand:String(input.recherchestand || "unbekannt").slice(0,100),
+      errors:Number(input.abfragefehler) || 0,
+      kandidaten:input.kandidaten.slice(0,40),
+      note:String(input.vollstaendigkeit || "").slice(0,240)
+    };
+  }
+  function infoRow(label, value) {
+    const row=elt("div","row");
+    row.append(elt("span","muted",label),elt("span","",value || "–"));
+    return row;
+  }
+  function createCard(mark, generation, imageJobs) {
+    const number = typeof mark.anmeldenummer === "string" ? mark.anmeldenummer : "";
+    const word = typeof mark.zeichen === "string" ? mark.zeichen.slice(0,180) : "";
+    const form = typeof mark.markenform === "string" ? mark.markenform : "";
+    const card=elt("article","card");
+    const figure=elt("div","figure");
+    const fallback=elt("div","empty");
+    fallback.textContent = form === "WORD" ? "Wortmarke – keine grafische Gestaltung" : "Abbildung wird geprüft …";
+    figure.append(fallback);
+    card.append(figure);
+    const info=elt("div","info");
+    info.append(elt("div","name",word || "Kein Wortbestandteil"),
+                infoRow("Anmeldenummer",number),
+                infoRow("Markenform",form),
+                infoRow("Registerstatus",mark.registerstatus),
+                infoRow("Statusbewertung",mark.statusbewertung),
+                infoRow("Klassen",Array.isArray(mark.nizza_klassen) ? mark.nizza_klassen.join(", ") : ""));
+    if (typeof mark.schriftbild_aehnlichkeit_technisch === "number") {
+      info.append(infoRow("Technische Textähnlichkeit",
+                          Math.round(mark.schriftbild_aehnlichkeit_technisch * 100) + " %"));
+    }
+    card.append(info);
+    if (form !== "WORD" && validNumber.test(number)) {
+      const acts=elt("div","actions");
+      const larger=elt("button","","Original anzeigen");
+      larger.type="button";
+      larger.addEventListener("click",() => openOriginal(number,word));
+      acts.append(larger);
+      card.append(acts);
+      imageJobs.push(async () => {
+        if (generation !== serial) return;
+        try {
+          const src=await loadImage(number);
+          if (generation !== serial) return;
+          fallback.textContent=src ? "" : "Keine Abbildung verfügbar";
+          if (src) {
+            const image=elt("img");
+            image.src=src; image.alt="Markenabbildung "+number; image.loading="lazy";
+            figure.replaceChildren(image);
+          }
+        } catch (e) {
+          if (generation === serial) fallback.textContent="Bildabruf fehlgeschlagen";
+        }
+      });
+    }
+    return card;
+  }
+  async function openOriginal(number,word) {
+    const id=++viewerSerial;
+    $("overlay").hidden=false;
+    $("largeImage").hidden=true;
+    $("largeStatus").textContent="Originalabbildung für "+number+" wird geladen …";
+    $("close").focus();
+    try {
+      const src=await loadImage(number,true);
+      if (id !== viewerSerial) return;
+      if (!src) throw new Error("Originalabbildung nicht vorhanden.");
+      $("largeImage").src=src; $("largeImage").alt="Originalabbildung "+number+" "+word;
+      $("largeImage").hidden=false;
+      $("largeStatus").textContent=number+" · "+word;
+    } catch(e) {
+      if (id === viewerSerial) $("largeStatus").textContent="Originalbild konnte nicht geladen werden.";
+    }
+  }
+  function closeOriginal() {
+    viewerSerial++;
+    $("overlay").hidden=true;
+    $("largeImage").src="";
+    $("largeImage").hidden=true;
+  }
+  function render() {
+    if (!data) return;
+    const generation=++serial;
+    const totalPages=Math.max(1,Math.ceil(data.kandidaten.length/pageSize));
+    page=Math.min(Math.max(0,page),totalPages-1);
+    const offset=page*pageSize;
+    const subset=data.kandidaten.slice(offset,offset+pageSize);
+    grid.replaceChildren();
+    const jobs=[];
+    for(const mark of subset) grid.append(createCard(mark,generation,jobs));
+    if (!subset.length) grid.append(elt("p","muted","Keine Recherchekandidaten für diese Auswahl."));
+    $("page").textContent="Anzeige "+(subset.length ? offset+1 : 0)+"–"+(offset+subset.length)+
+      " von "+data.shown+" dargestellten Kandidaten"+
+      (data.gesamt>data.shown ? " (weitere Treffer nicht geladen)" : "");
+    $("prev").disabled=page===0;
+    $("next").disabled=page>=totalPages-1;
+    const cls = data.klasse ? ", Klasse "+data.klasse : ", alle Klassen";
+    $("meta").textContent="Suchzeichen: "+data.zeichen+cls+
+      " · "+data.stand+" · "+data.gesamt+" Kandidaten ermittelt"+
+      (data.errors ? " · "+data.errors+" fehlerhafte Teilabfrage(n)" : "");
+    $("disclaimer").textContent="Teilrecherche: "+data.note+
+      ". Technische Textähnlichkeit ist keine juristische Verwechslungsgefahrbewertung. "+
+      "Nizza-Klassen sind nur Vorfilter. Für Wortmarken wird keine grafische Darstellung erfunden.";
+    setStatus(jobs.length ? "Markenbilder werden abgerufen …" : "Ergebnisse angezeigt.");
+    let next=0;
+    async function worker() {
+      while (next<jobs.length && generation===serial) {
+        const i=next++;
+        await jobs[i]();
+      }
+    }
+    Promise.all([worker(),worker()]).then(() => {
+      if (generation===serial) setStatus("Ergebnisse angezeigt.");
+    }).catch(() => {
+      if (generation===serial) setStatus("Einzelne Markenbilder konnten nicht geladen werden.",true);
+    });
+  }
+  $("prev").addEventListener("click",() => {page--;render();});
+  $("next").addEventListener("click",() => {page++;render();});
+  $("close").addEventListener("click",closeOriginal);
+  $("overlay").addEventListener("click",e => {if(e.target===$("overlay"))closeOriginal();});
+  document.addEventListener("keydown",e => {if(e.key==="Escape"&&!$("overlay").hidden) closeOriginal();});
+  window.addEventListener("message", event => {
+    if (event.source!==window.parent) return;
+    const msg=event.data;
+    if (!msg || msg.jsonrpc!=="2.0") return;
+    if (Object.hasOwn(msg,"id") && pending.has(msg.id)) {
+      const p=pending.get(msg.id);pending.delete(msg.id);clearTimeout(p.timer);
+      if(msg.error)p.reject(new Error(msg.error.message || "MCP-Fehler"));
+      else p.resolve(msg.result || {});
+      return;
+    }
+    if (msg.method==="ui/notifications/tool-result") {
+      const value=msg.params?.structuredContent || msg.params?.result?.structuredContent;
+      if (!value) return;
+      try {data=normalize(value);page=0;if(appReady)render();}
+      catch(e){setStatus(e.message,true);}
+    } else if (msg.method==="ui/resource-teardown" && Object.hasOwn(msg,"id")) {
+      window.parent.postMessage({jsonrpc:"2.0",id:msg.id,result:{}},"*");
+    }
+  });
+  (async()=>{
+    try {
+      await request("ui/initialize",{
+        protocolVersion:"2026-01-26",
+        appInfo:{name:"EUIPO-Vergleichsgalerie",version:"1.0.0"},
+        appCapabilities:{availableDisplayModes:["inline","fullscreen"]}
+      });
+      appReady=true;notify("ui/notifications/initialized");
+      if (data) render();
+      else setStatus("Warte auf Rechercheergebnis …");
+    } catch(e){setStatus("ChatGPT konnte die Vergleichsgalerie nicht initialisieren.",true);}
+  })();
+})();
+</script>
+</body></html>

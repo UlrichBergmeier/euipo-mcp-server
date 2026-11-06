@@ -4,11 +4,10 @@ Geschützter Read-only-MCP-Server auf Hostinger. Auth0-OAuth, Benutzerrollen,
 HTTPS via Traefik und EUIPO-Client-Credentials (nur in lokalen Secret-Dateien)
 bleiben voneinander getrennt.
 
-**Aktueller Produktivstand:** Die EUIPO-Erweiterungen mit sieben MCP-Werkzeugen
-sind auf Hostinger produktiv und über ChatGPT-Plugin 1.0.1 nutzbar.
-Die neue interaktive Bildansicht in `feature/euipo-mcp-image-viewer` wird
-**zunächst ausschließlich im Entwicklungszweig vorbereitet und nicht auf
-Hostinger bereitgestellt**.
+**Aktueller Produktivstand:** Der EUIPO-MCP-Server mit acht Werkzeugen
+(einschließlich interaktiver Einzelbildanzeige) ist auf Hostinger produktiv
+und mit ChatGPT-Plugin 1.0.2 nutzbar. Die Vergleichsgalerie wird im Branch
+`feature/euipo-similarity-gallery` entwickelt und ist **noch nicht produktiv**.
 
 ## Schnittstellen und Werkzeuge
 
@@ -26,7 +25,8 @@ den offiziellen EUIPO-Server unter
 | `euipo_aehnlichkeitsrecherche` | Begrenzte Kandidatensuche nach indexiertem verbalElement für Wortmarken **und** andere Markenformen, auch `FIGURATIVE` |
 | `euipo_erweiterte_markenrecherche` | **Neu:** Wortbestandteile, Nizza-Klassen ANY/ALL, Statuslisten, Markenformen, Markenbasis, Anmelder, Vertreter, Anmeldedaten und Sortierung |
 | `euipo_markenabbildung` | Geschütztes Thumbnail (max. 512 KB) oder Originalbild (max. 2 MB) als MCP-Bildinhalt; ChatGPT zeigt den Inhalt ohne UI nicht zwangsläufig sichtbar an |
-| `euipo_markenanzeige` | **Neu, nur Entwicklungszweig:** separate MCP-Apps-Bildansicht, ruft `euipo_markenabbildung` aus dem Chat-iframe über den authentifizierten MCP-Bridge-Aufruf ab |
+| `euipo_markenanzeige` | Interaktive Einzelbildanzeige als geschützte MCP App |
+| `euipo_aehnlichkeitsgalerie` | **Neu, im Entwicklungszweig:** begrenzte Ähnlichkeitssuche mit sichtbaren Markenabbildungen mehrerer Vergleichsmarken, Registerstatus und Klassen |
 
 **Nicht integriert:** Sound, Video und 3D-Modelle sind als nachrangige
 Erweiterungsmöglichkeit vorgesehen; sie dürfen nicht stillschweigend als
@@ -71,6 +71,40 @@ Die bestehenden sieben Werkzeuge, OAuth-Ressourcenkennung, Benutzerrollen,
 Traefik-Routen und Secret-Mounts bleiben unverändert. Neu ist ausschließlich
 ein achtes, read-only UI-Werkzeug mit passender HTML-Ressource.
 
+## EUIPO-Ähnlichkeitsgalerie (in Entwicklung)
+
+Das neunte MCP-Werkzeug `euipo_aehnlichkeitsgalerie(zeichen, nizza_klasse, ...)`
+verwendet **unverändert** die vorhandene `euipo_similarity_search`-Logik.
+Es führt pro Suchbegriff eine begrenzte Ergebnisseite ab und stellt höchstens
+40 Kandidaten in der Galerie bereit. Die Darstellung erfolgt auf Seiten zu je
+8 Kandidaten; maximal zwei Bilddownloads gleichzeitig und **nur** für
+Markenformen ungleich `WORD`. Der zugehörige Browser lädt Abbildungen über
+die bestehende geschützte MCP-Werkzeugverbindung
+`euipo_markenabbildung`. Originalbilder werden erst nach einem Klick
+abgerufen. Keine EUIPO-Secrets, keine externen Stylesheets, keine offenen
+Bild-URLs und keine eigenen Browser-Netzwerkaufrufe.
+
+UI-Ressource: `ui://euipo/aehnlichkeitsgalerie-v1.html`
+(`text/html;profile=mcp-app`). Es werden nur übermittelte Registerdaten
+angezeigt. Bei Wortmarken erscheint ein **neutraler textlicher Platzhalter**;
+es wird keine grafische Gestaltung erfunden. Fehlende oder gesperrte
+Abbildungen werden ausdrücklich als solche gekennzeichnet.
+
+**Wichtige rechtliche Grenzen:** Die Galerie bildet nur die begrenzte
+EUIPO-Teilrecherche ab; keine vollständige Kollisionsrecherche und keine
+automatische Verwechslungsgefahrbeurteilung. Ein angezeigter Prozentwert
+ist ausschließlich eine technische Zeichenfolgenähnlichkeit. Die
+Nizza-Klasse ist nur ein Vorfilter; nationale Marken und rein
+bildliche/klangliche/begriffliche Ähnlichkeiten werden nicht erschöpfend
+ermittelt. In der Kopfzeile wird die Zahl der ermittelten und der
+tatsächlich angezeigten Kandidaten offengelegt.
+
+Die bestehenden **acht** MCP-Werkzeuge, die Auth0-Rollen und -Tokens, die
+Traefik-Routen, die Docker-Compose-Konfiguration und die Secret-Dateien
+bleiben unverändert. Änderungen erfolgen zunächst ausschließlich auf dem
+Entwicklungszweig. Produktive Übernahme erst nach Offline-Tests,
+Sicherheitstests und einer tatsächlich sichtbaren Galerie in ChatGPT.
+
 ## Sicherheit und Deployment
 
 - Basis-`compose.yaml` veröffentlicht nur `127.0.0.1:8765`, die zusätzliche
@@ -90,7 +124,7 @@ ein achtes, read-only UI-Werkzeug mit passender HTML-Ressource.
 ## Offline-Tests ohne EUIPO-Zugangsdaten
 
 ```bash
-python -m unittest -v test_euipo test_similarity test_auth test_extensions test_viewer
+python -m unittest -v test_euipo test_similarity test_auth test_extensions test_viewer test_gallery
 ```
 
 Tests für Auth0 benötigen die Abhängigkeiten aus `requirements.txt`;
@@ -135,3 +169,12 @@ Zeichen- und Warenähnlichkeitsprüfung erforderlich.
 5. Im Chat `euipo_markenanzeige('019440746')` ausführen und **sichtbare**
    Bilddarstellung mit Vorschau, Original und Zoom bestätigen. Erst dann
    als vollständig funktionierend melden.
+
+## Freigabekriterien der Vergleichsgalerie
+
+1. Python-Offline-Tests und JavaScript-Bridge-Simulation grün.
+2. Separate Testversion mit neun Werkzeugen und beiden `ui://`-Ressourcen.
+3. Bestehende TLS/OAuth-Prüfungen unverändert erfolgreich.
+4. In einem neuen Chat: mehrere tatsächliche EUIPO-Bildmarken nebeneinander sichtbar,
+   Wortmarken korrekt textlich dargestellt, Original per Klick verfügbar.
+5. Bei EUIPO-Fehlern / unvollständigen Trefferlisten explizite Hinweise.
