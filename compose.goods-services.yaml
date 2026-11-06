@@ -1,0 +1,15 @@
+# Optional EUIPO Goods and Services integration. Requires two new
+# read-only secret files provisioned only AFTER EUIPO production approval.
+# Compose with the existing HTTPS override; never replace the live service
+# until all offline tests and access checks pass.
+services:
+  euipo-mcp:
+    volumes:
+      - type: bind
+        source: ./private/euipo_gs_client_id
+        target: /run/secrets/euipo_gs_client_id
+        read_only: true
+      - type: bind
+        source: ./private/euipo_gs_client_secret
+        target: /run/secrets/euipo_gs_client_secret
+        read_only: true
