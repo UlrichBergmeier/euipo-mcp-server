@@ -247,5 +247,108 @@ def euipo_markenanzeige(anmeldenummer: str) -> CallToolResult:
     )
 
 
+
+# Visuelle Kandidatenliste: gesonderte, begrenzte UI-Darstellung der bestehenden
+# Ähnlichkeitssuche. Die bisherige Suchfunktion und das Markenbildwerkzeug
+# bleiben funktional unverändert.
+_GALLERY_URI = "ui://euipo/aehnlichkeitsgalerie-v1.html"
+
+@mcp.resource(
+    _GALLERY_URI,
+    name="euipo-aehnlichkeitsgalerie",
+    title="EUIPO Ähnlichkeitsrecherche mit Markenabbildungen",
+    mime_type="text/html;profile=mcp-app",
+    meta={
+        "ui": {"csp": {"connectDomains": [], "resourceDomains": []}},
+        "openai/ui": {"availableDisplayModes": ["inline", "fullscreen"]},
+    },
+)
+def euipo_aehnlichkeitsgalerie_ui() -> str:
+    """Statische, selbstständige Vergleichsansicht ohne Browserzugriff auf EUIPO-Secrets."""
+    return Path(__file__).with_name("similarity_gallery.html").read_text(encoding="utf-8")
+
+
+@mcp.tool(
+    name="euipo_aehnlichkeitsgalerie",
+    title="EUIPO-Ähnlichkeitsrecherche mit Vergleichsbildern",
+    description=(
+        "Führe die bestehende begrenzte EUIPO-Ähnlichkeitsrecherche durch und zeige "
+        "ihre Kandidaten mit Registerstatus, Klassen und tatsächlichen Markenabbildungen "
+        "in einer Vergleichsgalerie direkt in ChatGPT an. Nur verfügbare Abbildungen "
+        "laden; Wortmarken bleiben Wortmarken. Weder Vollständigkeit noch "
+        "rechtliche Verwechslungsgefahr behaupten."
+    ),
+    structured_output=False,
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
+    meta={
+        "ui": {"resourceUri": _GALLERY_URI, "visibility": ["model", "app"]},
+        "openai/outputTemplate": _GALLERY_URI,
+        "openai/toolInvocation/invoking": "EUIPO-Vergleichsmarken werden recherchiert …",
+        "openai/toolInvocation/invoked": "EUIPO-Vergleichsgalerie bereitgestellt",
+    },
+)
+async def euipo_aehnlichkeitsgalerie(
+    zeichen: str,
+    nizza_klasse: int = 0,
+    weitere_suchbegriffe: list[str] | None = None,
+    nur_potenziell_lebende: bool = True,
+    markenbasis: str = "ALL",
+) -> CallToolResult:
+    """Erstellt eine begrenzte visuelle Kandidatenliste, ohne Bilddaten in JSON auszugeben."""
+    try:
+        result = await euipo_similarity_search(
+            zeichen=zeichen,
+            nizza_klasse=nizza_klasse,
+            weitere_suchbegriffe=weitere_suchbegriffe,
+            seiten_pro_suche=1,
+            seitenumfang=25,
+            nur_potenziell_lebende=nur_potenziell_lebende,
+            markenbasis=markenbasis,
+        )
+        if not result.get("abfragen"):
+            raise RuntimeError("Keine erfolgreiche EUIPO-Teilabfrage")
+    except (ValueError, RuntimeError):
+        return CallToolResult(
+            content=[TextContent(type="text", text="EUIPO-Vergleichsrecherche konnte nicht ausgeführt werden.")],
+            isError=True,
+        )
+    except Exception:
+        return CallToolResult(
+            content=[TextContent(type="text", text="EUIPO-Abfrage fehlgeschlagen; serverseitig prüfen.")],
+            isError=True,
+        )
+    candidates = (
+        result["potenziell_lebende_marken"]
+        + result["status_manuell_pruefen"]
+        + result["nicht_lebende_marken"]
+    )
+    # No exhaustive register clearance. Keep tool responses bounded and
+    # preserve their actual returned rank/status (never fabricate images).
+    limit = 40
+    summary = {
+        "zeichen": result["zeichen"],
+        "nizza_klasse": result["nizza_klasse_vorfilter"],
+        "recherchestand": result["recherchestand"],
+        "gesamt_kandidaten": len(candidates),
+        "kandidaten": candidates[:limit],
+        "abfragefehler": len(result["abfragefehler"]),
+        "vollstaendigkeit": result["vollstaendigkeit"],
+    }
+    message = (
+        f"EUIPO-Ähnlichkeitsgalerie für {result['zeichen']}: "
+        f"{len(candidates)} Kandidaten aus begrenzten Teilabfragen, "
+        f"{min(limit,len(candidates))} für die Galerie bereitgestellt. "
+        f"Teilabfragefehler: {len(result['abfragefehler'])}. "
+        "Markenabbildungen werden ausschließlich in der eingebetteten MCP-App "
+        "über das geschützte EUIPO-Werkzeug geladen. "
+        "Ohne tatsächlich sichtbare Galerie keine Bilddarstellung behaupten. "
+        "Keine vollständige Kollisionsrecherche oder rechtliche Risikoabschätzung."
+    )
+    return CallToolResult(
+        content=[TextContent(type="text", text=message)],
+        structuredContent=summary,
+    )
+
+
 if __name__=="__main__":
     mcp.run(transport="streamable-http")
