@@ -38,7 +38,7 @@ def response(candidates, errors=None, queries=None):
 class GalleryTests(unittest.IsolatedAsyncioTestCase):
     async def test_ninth_tool_and_gallery_resource_registered(self):
         tools = {t.name:t for t in await mcp.list_tools()}
-        self.assertEqual(len(tools),9)
+        self.assertEqual(len(tools),10)
         self.assertEqual(tools["euipo_aehnlichkeitsgalerie"].meta["ui"]["resourceUri"], GALLERY)
         self.assertEqual(tools["euipo_aehnlichkeitsgalerie"].meta["openai/outputTemplate"], GALLERY)
         self.assertTrue(tools["euipo_aehnlichkeitsgalerie"].annotations.readOnlyHint)
