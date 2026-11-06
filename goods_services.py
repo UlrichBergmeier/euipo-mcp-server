@@ -37,7 +37,7 @@ def _clean_term(value: str) -> str:
     # Only remove an obvious final list-item full stop, not abbreviations
     # or punctuation *within* the term. The original is retained in output.
     text = value.strip()
-    text = re.sub(r"\\.\\s*$", "", text).rstrip()
+    text = text[:-1].rstrip() if text.endswith(".") else text
     if not text or len(text) > 500:
         raise ValueError("Leerer oder zu langer W/D-Begriff (max. 500 Zeichen)")
     return text
