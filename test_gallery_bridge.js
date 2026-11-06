@@ -3,11 +3,12 @@
 const fs=require("node:fs"),vm=require("node:vm"),assert=require("node:assert/strict");
 class Node {
   constructor(tag="div"){this.tag=tag;this.children=[];this.handlers={};this.hidden=false;
-    this.textContent="";this.className="";this.disabled=false;this.src="";this.alt="";
+    this.textContent="";this.className="";this.disabled=false;this.src="";this.alt="";this.attrs={};
     this.classList={toggle() {}};}
   append(...nodes){this.children.push(...nodes);}
   replaceChildren(...nodes){this.children=nodes;}
   addEventListener(type,fn){this.handlers[type]=fn;}
+  setAttribute(key,value){this.attrs[key]=value;}
   focus(){}
   click(){this.handlers.click?.({target:this});}
 }
@@ -37,6 +38,7 @@ function fromIframe(msg){
       method:"ui/notifications/tool-result",params:{structuredContent:{
         zeichen:"BETON",nizza_klasse:19,recherchestand:"API-Teilrecherche durchgeführt",
         gesamt_kandidaten:3,abfragefehler:0,
+        referenzwaren_dienstleistungen:["Beton"],
         vollstaendigkeit:"NICHT garantiert; begrenzte Teilstringabfragen",
         kandidaten:[
           candidate("019440746","FIGURATIVE","BOXBETON"),
@@ -45,12 +47,26 @@ function fromIframe(msg){
         ]
       }}}));
   }else if(msg.method==="tools/call"){
-    assert.equal(msg.params.name,"euipo_markenabbildung");
-    const {anmeldenummer,vorschaubild}=msg.params.arguments;
-    calls.push({anmeldenummer,vorschaubild});
-    const item={type:"image",mimeType:"image/jpeg",data:"/9j/"};
-    queueMicrotask(()=>fromHost({jsonrpc:"2.0",id:msg.id,
-       result:{content:[item],isError:false}}));
+    if(msg.params.name==="euipo_markenabbildung") {
+      const {anmeldenummer,vorschaubild}=msg.params.arguments;
+      calls.push({anmeldenummer,vorschaubild});
+      const item={type:"image",mimeType:"image/jpeg",data:"/9j/"};
+      queueMicrotask(()=>fromHost({jsonrpc:"2.0",id:msg.id,
+        result:{content:[item],isError:false}}));
+    }else if(msg.params.name==="euipo_klassendetails") {
+      const {anmeldenummer,nizza_klasse,referenzwaren}=msg.params.arguments;
+      calls.push({anmeldenummer,nizza_klasse,referenzwaren,kind:"class"});
+      queueMicrotask(()=>fromHost({jsonrpc:"2.0",id:msg.id,result:{
+        structuredContent:{
+          anmeldenummer,nizza_klasse,begriffe:["Beton","Baustoffe"],
+          sprache:"de",deutsche_registerfassung:true,
+          hinweis:"Deutsche Fassung aus dem EUIPO-Register.",
+          technisch_naechster_begriff:{
+            wortlaut:"Beton",verglichen_mit:"Beton",technische_textaehnlichkeit:1
+          }
+        }
+      }}));
+    }else throw new Error("Unexpected tool "+msg.params.name);
   }
 }
 const html=fs.readFileSync("similarity_gallery.html","utf8");
@@ -80,5 +96,23 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   $("close").click();
   assert.equal($("overlay").hidden,true);
   assert.match($("disclaimer").textContent,/keine juristische/);
+  const info=$("gallery").children[0].children[1];
+  const classes=info.children.find(x=>x.className==="" && x.children.some(y=>y.className==="classlist"));
+  assert.ok(classes,"class selection exists");
+  const classRow=classes.children[0];
+  const class19=classRow.children[1];
+  assert.equal(class19.textContent,"19");
+  class19.click();
+  await pause();
+  const classCalls=calls.filter(x=>x.kind==="class");
+  assert.equal(classCalls.length,1,"class retrieval is lazy");
+  assert.equal(JSON.stringify(classCalls[0].referenzwaren),JSON.stringify(["Beton"]));
+  assert.equal(classCalls[0].nizza_klasse,19);
+  const details=classes.children[1];
+  assert.equal(details.hidden,false,"class terms expanded");
+  assert.ok(details.children.some(x=>x.className==="best"),"best textual candidate indicated");
+  const terms=details.children.find(x=>x.tag==="ol");
+  assert.equal(terms.children.length,2);
+  assert.equal(terms.children[0].textContent,"Beton");
   console.log("MCP gallery: initialize, 3 candidates, 2 thumbnails, no fake wordmark image, original OK");
 })().catch(e=>{console.error(e);process.exitCode=1;});
