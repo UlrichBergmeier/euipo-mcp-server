@@ -55,6 +55,7 @@ def _candidate(mark: dict[str,Any], target: str, via: str) -> dict[str,Any]:
         "zeichen":name or None,
         "anmeldenummer":mark.get("applicationNumber"),
         "markenbasis":mark.get("markBasis"),
+        "markenform":mark.get("markFeature"),
         "registerstatus":mark.get("status"),
         "statusbewertung":_status(mark.get("status")),
         "anmeldedatum":mark.get("applicationDate"),
@@ -78,7 +79,8 @@ async def euipo_similarity_search(
 ) -> dict[str,Any]:
     """Research typed substrings; caller supplies phonetic/conceptual variants.
     
-    Search covers only a limited number of pages for each query. It does not
+    Search covers indexed verbal elements even in figurative marks, but cannot
+    identify text appearing only inside image pixels. It does not
     search all European national registers or guarantee exhaustive similarity.
     """
     zeichen=_validate(zeichen)
@@ -106,7 +108,12 @@ async def euipo_similarity_search(
     for term in terms:
         for page in range(seiten_pro_suche):
             try:
-                result=await client.search_wordmarks(
+                # Prefer all registered mark forms with an indexed verbalElement.
+                # Legacy/mock clients retain the original method.
+                search = getattr(client, "search_verbal_marks", None)
+                if search is None:
+                    search = client.search_wordmarks
+                result=await search(
                     term,nizza_klasse or None,status=None,
                     page=page,size=seitenumfang,mark_basis=markenbasis
                 )
@@ -163,6 +170,7 @@ async def euipo_similarity_search(
         "hinweise":[
             "Schriftbildliche Rangfolge ist technisch, nicht rechtsverbindlich.",
             "Klangliche/begriffliche Varianten gesondert als Suchbegriffe vorgeben.",
+            "Auch FIGURATIVE-Marken mit indexiertem verbalElement können erscheinen; reine Bildinhalte ohne Textelement nicht.",
             "Streitige oder unbekannte Registerstatus manuell überprüfen.",
             "Waren/DL anhand des Detailverzeichnisses prüfen, Nizza-Klasse nur als Vorfilter.",
             "Nationale Marken und sonstige ältere Rechte nicht vollständig erfasst.",
