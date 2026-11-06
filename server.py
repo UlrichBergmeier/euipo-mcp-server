@@ -1,11 +1,12 @@
 """Local-only EUIPO MCP service; require Auth0 bearer authorization for all tools."""
 from __future__ import annotations
 import json
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 from mcp.server.auth.settings import AuthSettings
 from auth0_verifier import Auth0TokenVerifier, AUTH0_ISSUER, RESOURCE_URL, REQUIRED_PERMISSION
 from core import create_variants, comparative_age
 from euipo import EUIPOClient
+from euipo_extensions import advanced_search, get_trademark_image
 from similarity import euipo_similarity_search
 
 mcp=FastMCP(
@@ -57,15 +58,19 @@ def alter_vergleichsmarke(anmeldedatum: str)->dict:
 async def euipo_wortmarkenrecherche(
     suchbegriff: str,
     nizza_klasse: int = 0,
-    registerstatus: str = "REGISTERED",
+    registerstatus: str = "ALLE",
     seite: int = 0,
     seitenumfang: int = 20,
     markenbasis: str = "ALL",
 )->dict:
-    """Recherchiere EUIPO-Wortmarken. Benötigt serverseitige EUIPO-Zugangsdaten."""
+    """EUIPO-Wortmarken; standardmäßig alle Registerstatus einschließlich Anmeldungen.
+
+    Für nur eingetragene Marken registerstatus='REGISTERED' angeben.
+    """
     try:
+        status = None if registerstatus in ("ALLE", "ALL", "") else registerstatus
         return await EUIPOClient().search_wordmarks(suchbegriff,nizza_klasse or None,
-                        registerstatus,seite,seitenumfang,markenbasis)
+                        status,seite,seitenumfang,markenbasis)
     except (RuntimeError,ValueError) as e:
         return {"fehler":str(e),"recherchestand":"nicht durchgeführt"}
     except Exception:
@@ -73,7 +78,7 @@ async def euipo_wortmarkenrecherche(
 
 @mcp.tool()
 async def euipo_markendetails(anmeldenummer: str)->dict:
-    """Rufe Registerdaten und Waren-/Dienstleistungsverzeichnis einer Marke ab."""
+    """Rufe vollständige Registerdaten einschließlich Prioritäten und Verfahren ab."""
     try:
         return await EUIPOClient().trademark_detail(anmeldenummer)
     except (RuntimeError,ValueError) as e:
@@ -111,6 +116,69 @@ async def euipo_aehnlichkeitsrecherche(
     except Exception:
         return {
             "fehler": "Ähnlichkeitsrecherche fehlgeschlagen; serverseitig prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
+
+
+
+@mcp.tool()
+async def euipo_erweiterte_markenrecherche(
+    suchbegriff: str = "",
+    nizza_klassen: list[int] | None = None,
+    klassenmodus: str = "ANY",
+    registerstatus: list[str] | None = None,
+    markenformen: list[str] | None = None,
+    markenbasis: str = "ALL",
+    anmelder: str = "",
+    vertreter: str = "",
+    angemeldet_ab: str = "",
+    angemeldet_bis: str = "",
+    seite: int = 0,
+    seitenumfang: int = 20,
+    sortierfeld: str = "applicationDate",
+    sortierrichtung: str = "desc",
+) -> dict:
+    """Strukturierte EUIPO-Teilrecherche: Text, Klassen (ANY/ALL), mehrere
+    Registerstatus, Markenformen, EU/IR-Basis, Namen, Anmeldedatum und Sortierung.
+
+    Keine Statusangabe = alle Registerstatus. Auch FIGURATIVE mit indexiertem
+    Textelement recherchierbar. Je Aufruf eine Ergebnisseite; keine vollständige
+    Kollisionsrecherche.
+    """
+    try:
+        return await advanced_search(
+            EUIPOClient(), suchbegriff=suchbegriff,
+            nizza_klassen=nizza_klassen, klassenmodus=klassenmodus,
+            registerstatus=registerstatus, markenformen=markenformen,
+            markenbasis=markenbasis, anmelder=anmelder, vertreter=vertreter,
+            angemeldet_ab=angemeldet_ab, angemeldet_bis=angemeldet_bis,
+            seite=seite, seitenumfang=seitenumfang, sortierfeld=sortierfeld,
+            sortierrichtung=sortierrichtung,
+        )
+    except (RuntimeError, ValueError) as e:
+        return {"fehler": str(e), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "Erweiterte EUIPO-Abfrage fehlgeschlagen; serverseitig prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
+
+
+@mcp.tool()
+async def euipo_markenabbildung(anmeldenummer: str, vorschaubild: bool = True):
+    """EUIPO-Markenabbildung direkt als geschütztes MCP-Bild abrufen.
+
+    Thumbnail bis 512 KB, Original bis 2 MB. Keine EUIPO-URLs oder API-Schlüssel
+    an ChatGPT ausgeben. Wortmarken können ohne Bild geführt sein.
+    """
+    try:
+        data, fmt = await get_trademark_image(EUIPOClient(), anmeldenummer, vorschaubild)
+        return Image(data=data, format=fmt)
+    except (RuntimeError, ValueError) as e:
+        return {"fehler": str(e), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "Markenabbildung nicht verfügbar; serverseitig prüfen",
             "recherchestand": "nicht durchgeführt",
         }
 
