@@ -88,6 +88,7 @@ def parse_class_goods(
             "begriffe": [], "sprache": None, "deutsche_registerfassung": False,
             "hinweis": "Für diese Klasse wurde im abgerufenen Registerdatensatz kein Verzeichnis geliefert.",
             "vergleichsbegriffe": refs, "technisch_naechster_begriff": None,
+            "passende_positionen": [],
             "rangfolge": "Keine juristische Waren-/Dienstleistungsähnlichkeitsbewertung.",
         }
     merged: dict[str, list[str]] = {}
@@ -106,6 +107,22 @@ def parse_class_goods(
         "unveränderte Registerbegriffe in Original-/verfügbarer Sprache. "
         "Keine automatische Übersetzung."
     )
+    # Identify exact matches and high lexical candidates only. These are
+    # text-comparison flags, not findings of legal goods/service similarity.
+    candidates = []
+    if refs and terms:
+        for term in terms:
+            if not isinstance(term, str):
+                continue
+            scored = [(_similarity(term, reference), reference) for reference in refs]
+            score, reference = max(scored, key=lambda item: item[0])
+            if score >= 0.72:
+                candidates.append({
+                    "wortlaut": term,
+                    "verglichen_mit": reference,
+                    "technische_textaehnlichkeit": score,
+                    "art": "identisch" if _norm(term) == _norm(reference) else "textlich_aehnlich",
+                })
     # No fake ranking if reference goods/services were not specified.
     best = None
     if refs and terms:
@@ -133,6 +150,7 @@ def parse_class_goods(
         "hinweis": note,
         "vergleichsbegriffe": refs,
         "technisch_naechster_begriff": best,
+        "passende_positionen": candidates,
         "rangfolge": "Technische Vorauswahl, nicht die rechtlich ähnlichste Ware oder Dienstleistung.",
         "quelle": "EUIPO Trademark Search API 1.1.0 – Registerdetail",
     }
