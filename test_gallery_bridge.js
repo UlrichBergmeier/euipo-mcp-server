@@ -120,7 +120,7 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   assert.equal(classCalls[0].nizza_klasse,19);
   const details=classes.children[1];
   assert.equal(details.hidden,false,"class terms expanded");
-  assert.ok(details.children.some(x=>x.className==="best"),"best textual candidate indicated");
+  assert.ok(details.children.some(x=>x.className==="match-note"),"textually matching candidate indicated");
   const terms=details.children.find(x=>x.tag==="ol");
   assert.equal(terms.children.length,2);
   assert.equal(terms.children[0].textContent,"Beton");
