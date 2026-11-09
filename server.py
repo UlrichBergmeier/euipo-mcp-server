@@ -399,11 +399,22 @@ async def euipo_klassendetails(
                 if isinstance(item, dict) and type(item.get("classNumber")) is int
                 and 1 <= item["classNumber"] <= 45
             })
+            summaries = []
+            for cls in classes:
+                entry = parse_class_goods(detail, cls, referenzwaren)
+                summaries.append({
+                    "nizza_klasse": cls,
+                    "sprache": entry["sprache"],
+                    "anzahl_begriffe": len(entry["begriffe"]),
+                    "passende_positionen": entry["passende_positionen"][:12],
+                    "weitere_treffer": max(0, len(entry["passende_positionen"]) - 12),
+                    "technisch_naechster_begriff": entry["technisch_naechster_begriff"],
+                })
             return {
                 "anmeldenummer": anmeldenummer,
                 "nizza_klasse": 0,
-                "klassen": [parse_class_goods(detail, c, referenzwaren) for c in classes],
-                "hinweis": "Nur tatsächliche Registerverzeichnisse; technische Texttreffer ohne Rechtsbewertung.",
+                "klassen": summaries,
+                "hinweis": "Kompakte Übersicht; vollständige Begriffe erst bei Klick je Klasse.",
             }
         return parse_class_goods(detail, nizza_klasse, referenzwaren)
     except (RuntimeError, ValueError):
