@@ -105,7 +105,7 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   assert.equal($("overlay").hidden,false);
   $("close").click();
   assert.equal($("overlay").hidden,true);
-  assert.match($("disclaimer").textContent,/keine juristische/);
+  assert.match($("disclaimer").textContent,/KEINE Wahrscheinlichkeit/);
   const info=$("gallery").children[0].children[1];
   const classes=info.children.find(x=>x.className==="" && x.children.some(y=>y.className==="classlist"));
   assert.ok(classes,"class selection exists");
