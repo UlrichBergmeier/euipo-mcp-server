@@ -91,7 +91,7 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
   const pageSize = 8;
   let appReady = false, data = null, page = 0, serial = 0, requestId = 1, viewerSerial = 0;
-  const pending = new Map(), imageCache = new Map(), goodsCache = new Map();
+  const pending = new Map(), imageCache = new Map(), goodsCache = new Map(), goodsResolved = new Map();
   function setStatus(msg, isError = false) {
     $("status").textContent = msg;
     $("status").classList.toggle("error", isError);
@@ -177,6 +177,7 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
       }).then(parseToolResult).then(record => {
         if(record.fehler || record.anmeldenummer!==number || !Array.isArray(record.klassen))
           throw new Error("Klassenübersicht konnte nicht abgerufen werden.");
+        goodsResolved.set(key,record);
         return record;
       });
       goodsCache.set(key,promise);
@@ -216,7 +217,7 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
     const box=elt("div","risk-box");
     const btn=elt("button","risk-btn");
     btn.type="button";btn.setAttribute("aria-expanded","false");
-    const prefix=elt("span","","Risikoindex · vorläufig");
+    const prefix=elt("span","","Verwechslungsgefahr? · Vorläufiger Risikoindex");
     const score=elt("strong","risk-unknown","–");
     btn.append(prefix,score);
     const detail=elt("div","risk-detail");detail.hidden=true;
@@ -441,9 +442,12 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
     const generation=++serial;
     // Global provisional triage of all retrieved candidates, before pagination.
     // Sorting does not imply a final legal likelihood-of-confusion finding.
+    function key(mark){return String(mark.anmeldenummer||"")+":"+JSON.stringify(data.references);}
     data.kandidaten.sort((left,right)=>{
-      const a=evaluation(left,null).index ?? ((left.schriftbild_aehnlichkeit_technisch||0)*100);
-      const b=evaluation(right,null).index ?? ((right.schriftbild_aehnlichkeit_technisch||0)*100);
+      const a=evaluation(left,goodsResolved.get(key(left))||null).index ??
+        ((left.schriftbild_aehnlichkeit_technisch||0)*100);
+      const b=evaluation(right,goodsResolved.get(key(right))||null).index ??
+        ((right.schriftbild_aehnlichkeit_technisch||0)*100);
       return b-a;
     });
     const totalPages=Math.max(1,Math.ceil(data.kandidaten.length/pageSize));
@@ -477,7 +481,17 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
       }
     }
     Promise.all([worker(),worker()]).then(() => {
-      if (generation===serial) setStatus("Ergebnisse angezeigt.");
+      if (generation!==serial)return;
+      const previous=data.kandidaten.map(x=>x.anmeldenummer).join("|");
+      const key=x=>String(x.anmeldenummer||"")+":"+JSON.stringify(data.references);
+      data.kandidaten.sort((a,b)=>{
+        const ea=evaluation(a,goodsResolved.get(key(a))||null);
+        const eb=evaluation(b,goodsResolved.get(key(b))||null);
+        return (eb.index ?? (b.schriftbild_aehnlichkeit_technisch||0)*100)-
+               (ea.index ?? (a.schriftbild_aehnlichkeit_technisch||0)*100);
+      });
+      if(data.kandidaten.map(x=>x.anmeldenummer).join("|")!==previous)render();
+      else setStatus("Ergebnisse nach vorläufigem Risikoindex sortiert.");
     }).catch(() => {
       if (generation===serial) setStatus("Einzelne Markenbilder konnten nicht geladen werden.",true);
     });
