@@ -74,6 +74,33 @@ class RegisterGoodsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value["anmeldenummer"],"019440746")
         self.assertNotIn("applicants",value)
 
+    async def test_tech_identical_and_similar_goods_candidates(self):
+        data=detail()
+        data["goodsAndServices"][0]["description"][1]["terms"]=[
+            "Beton","Betonbau", "Vorgefertigte Bauplatten", "Mineralische Baustoffe"
+        ]
+        record=parse_class_goods(data,19,["Beton"])
+        classified={item["wortlaut"]:item["art"] for item in record["passende_positionen"]}
+        self.assertEqual(classified["Beton"],"identisch")
+        self.assertEqual(classified["Betonbau"],"textlich_aehnlich")
+        self.assertNotIn("Mineralische Baustoffe",classified)
+
+    async def test_all_class_summary_is_compact_one_api_call(self):
+        calls=[]
+        class FakeClient:
+            async def trademark_detail(self, number):
+                calls.append(number)
+                return detail()
+        with patch("server.EUIPOClient",return_value=FakeClient()):
+            result=await euipo_klassendetails("019440746",0,["Beton"])
+        self.assertEqual(calls,["019440746"])
+        self.assertEqual(result["nizza_klasse"],0)
+        self.assertEqual({c["nizza_klasse"] for c in result["klassen"]},{19,37})
+        self.assertNotIn("begriffe",result["klassen"][0])
+        cl19=next(c for c in result["klassen"] if c["nizza_klasse"]==19)
+        self.assertEqual(cl19["passende_positionen"][0]["art"],"identisch")
+        self.assertEqual(cl19["passende_positionen"][0]["wortlaut"],"Beton")
+
     async def test_invalid_input_rejected_before_api(self):
         with patch("server.EUIPOClient") as mock:
             out=await euipo_klassendetails("019440746/../../etc",19)

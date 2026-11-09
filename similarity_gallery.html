@@ -48,6 +48,21 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
 .classgoods ol{padding-left:20px;max-height:240px;overflow:auto;margin:8px 0}
 .classgoods li{margin-bottom:4px;overflow-wrap:anywhere}
 .classgoods .warning{font-size:11px}
+
+/* Comparison triage: non-statistical risk index, not legal probability. */
+.risk-box{padding:8px 10px;border:1px solid var(--color-border-default,#d5d8dd);border-radius:8px;margin:5px 0}
+.risk-btn{font-weight:750;font-size:16px;width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.risk-high{color:#bc222c!important}
+.risk-medium{color:#aa5c00!important}
+.risk-low{color:#087b35!important}
+.risk-unknown{color:var(--color-text-secondary,#777)!important}
+.risk-detail{font-size:12px;line-height:1.55;padding:8px 0 2px;display:grid;gap:6px}
+.risk-detail strong{font-weight:650}
+.classbtn{white-space:normal;text-align:left;overflow-wrap:anywhere}
+.classbtn .matching-label{color:#bd2626;font-weight:750}
+.classgoods .matched{color:#bd2626;font-weight:750}
+.classgoods .match-note{font-size:11px;color:#b3261e;font-weight:650}
+.assessment-warning{font-size:11px;color:var(--color-text-secondary,#666);line-height:1.5}
 </style>
 </head>
 <body>
@@ -76,7 +91,7 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
   const pageSize = 8;
   let appReady = false, data = null, page = 0, serial = 0, requestId = 1, viewerSerial = 0;
-  const pending = new Map(), imageCache = new Map();
+  const pending = new Map(), imageCache = new Map(), goodsCache = new Map(), goodsResolved = new Map();
   function setStatus(msg, isError = false) {
     $("status").textContent = msg;
     $("status").classList.toggle("error", isError);
@@ -152,83 +167,191 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
     }
     throw new Error("EUIPO antwortete mit einem unerwarteten Datenformat.");
   }
+  async function goodsOverview(number) {
+    if (!validNumber.test(number)) throw new Error("Anmeldenummer ungültig.");
+    const key = number + ":" + JSON.stringify(data?.references || []);
+    if (!goodsCache.has(key)) {
+      const promise = request("tools/call", {
+        name:"euipo_klassendetails",
+        arguments:{anmeldenummer:number,nizza_klasse:0,referenzwaren:data?.references||[]}
+      }).then(parseToolResult).then(record => {
+        if(record.fehler || record.anmeldenummer!==number || !Array.isArray(record.klassen))
+          throw new Error("Klassenübersicht konnte nicht abgerufen werden.");
+        goodsResolved.set(key,record);
+        return record;
+      });
+      goodsCache.set(key,promise);
+    }
+    return goodsCache.get(key);
+  }
+  function grade(value) {
+    if (value===null || !Number.isFinite(value)) return "nicht geprüft";
+    return value>=.999 ? "Identisch" : value>=.82 ? "hoch" :
+      value>=.60 ? "durchschnittlich" : value>=.35 ? "gering" : "keine";
+  }
+  function evaluation(mark, overview) {
+    const a=mark.identischer_wortlaut===true ? 1 :
+      typeof mark.schriftbild_aehnlichkeit_technisch==="number"
+        ? Math.max(0,Math.min(1,mark.schriftbild_aehnlichkeit_technisch)) : null;
+    const classes=Array.isArray(overview?.klassen)?overview.klassen:[];
+    const matches=classes.map(c=>c.technisch_naechster_begriff?.technische_textaehnlichkeit)
+      .filter(v=>typeof v==="number"&&Number.isFinite(v));
+    const maxMatch=matches.length?Math.max(...matches):null;
+    const hasRefs=Boolean(data?.references?.length);
+    const classOverlap=Array.isArray(mark.nizza_klassen)&&mark.nizza_klassen.includes(data?.klasse);
+    // Missing goods data means a neutral provisional value, never dissimilarity.
+    const goodsForSort=hasRefs ? maxMatch!==null?maxMatch:(classOverlap?.5:.3) : null;
+    const provisional=hasRefs && maxMatch===null;
+    const index=a===null||!hasRefs ? null :
+      Math.round(100*(.65*a+.35*goodsForSort));
+    return {
+      index, provisional, goodsKnown:maxMatch!==null,
+      signGrade:grade(a),
+      goodsGrade:maxMatch===null ? "nicht geprüft" : grade(maxMatch),
+      goodsTop:maxMatch,
+      kennzeichnungskraft:"nicht geprüft",
+      category:index===null?"unknown":index>=70?"high":index>=40?"medium":"low"
+    };
+  }
+  function riskWidget(mark, number) {
+    const box=elt("div","risk-box");
+    const btn=elt("button","risk-btn");
+    btn.type="button";btn.setAttribute("aria-expanded","false");
+    const prefix=elt("span","","Verwechslungsgefahr? · Vorläufiger Risikoindex");
+    const score=elt("strong","risk-unknown","–");
+    btn.append(prefix,score);
+    const detail=elt("div","risk-detail");detail.hidden=true;
+    box.append(btn,detail);
+    let overview=null;
+    function update(record=null) {
+      if(record)overview=record;
+      const rating=evaluation(mark,overview);
+      score.textContent=rating.index===null?"nicht bewertbar":rating.index+" %";
+      score.className="risk-"+rating.category;
+      detail.replaceChildren();
+      const rows=[
+        ["Zeichenähnlichkeit","Schriftbildlicher Wortvergleich: "+rating.signGrade+
+          ". Klangliche, begriffliche und bildliche Gesamtbetrachtung nicht geprüft."],
+        ["Waren-/Dienstleistungsähnlichkeit","Technische Wortähnlichkeit: "+rating.goodsGrade+
+          ". Rechtliche Warenähnlichkeit (Art, Zweck, Wettbewerb, Ergänzung, Vertriebswege) nicht geprüft."],
+        ["Kennzeichnungskraft","Nicht geprüft. Beschreibende/schwache Elemente, Benutzungslage und erhöhte Kennzeichnungskraft gesondert beurteilen."],
+        ["Gesamtbeurteilung",rating.index===null?
+          "Ohne konkrete Referenzwaren oder verlässlichen Zeichenwortlaut kein Index.":
+          "Nur heuristischer Priorisierungswert aus 65 % Schriftbild-Textvergleich und 35 % technischer W/D-Textübereinstimmung."+
+          (rating.provisional?" Register-W/D noch nicht ausgewertet.":" Register-W/D technisch vorausgewertet.")],
+      ];
+      for (const [name,text] of rows) {
+        const row=elt("div");
+        row.append(elt("strong","",name+": "),elt("span","",text));
+        detail.append(row);
+      }
+      detail.append(elt("div","assessment-warning",
+        "Dieser Prozentwert ist KEINE statistische Wahrscheinlichkeit einer Verwechslung und ersetzt keine juristische Gesamtprüfung. Fehlende Prüfungspunkte können die Rangfolge ändern."));
+      return rating;
+    }
+    btn.addEventListener("click",()=>{
+      detail.hidden=!detail.hidden;
+      btn.setAttribute("aria-expanded",detail.hidden?"false":"true");
+    });
+    update();
+    return {node:box, update};
+  }
   function classSelection(mark, number) {
     const outer=elt("div");
     const line=elt("div","classlist");
     line.append(elt("span","muted","Klassen"));
     const details=elt("div","classgoods");
     details.hidden=true;
-    let chosen=null, fetchCount=0;
+    let chosen=null,fetchCount=0;
     const classes=Array.isArray(mark.nizza_klassen)
       ? mark.nizza_klassen.filter(c=>Number.isInteger(c)&&c>=1&&c<=45) : [];
     const buttons=[];
-    for (const klass of classes) {
+    const overviewMap=new Map();
+    for(const klass of classes) {
       const btn=elt("button","classbtn",String(klass));
       btn.type="button";btn.setAttribute("aria-expanded","false");
       buttons.push(btn);line.append(btn);
-      btn.addEventListener("click", async () => {
-        if (chosen===klass && !details.hidden) {
+      btn.addEventListener("click",async()=>{
+        if(chosen===klass&&!details.hidden){
           details.hidden=true;chosen=null;btn.setAttribute("aria-expanded","false");
           fetchCount++;return;
         }
         chosen=klass;details.hidden=false;
-        for (const item of buttons) item.setAttribute("aria-expanded",item===btn?"true":"false");
+        for(const item of buttons)item.setAttribute("aria-expanded",item===btn?"true":"false");
         details.replaceChildren(elt("span","muted","Verzeichnis für Klasse "+klass+" wird abgerufen …"));
         const seq=++fetchCount;
-        if (!validNumber.test(number)) {
+        if(!validNumber.test(number)) {
           details.replaceChildren(elt("span","muted","Anmeldenummer fehlt – kein Registerabruf möglich."));
           return;
         }
         try {
-          const response = await request("tools/call",{
+          const record=parseToolResult(await request("tools/call",{
             name:"euipo_klassendetails",
             arguments:{anmeldenummer:number,nizza_klasse:klass,referenzwaren:data?.references||[]}
-          });
-          if(seq!==fetchCount || chosen!==klass)return;
-          const record=parseToolResult(response);
-          if(record.fehler) throw new Error(String(record.fehler));
-          if(record.nizza_klasse!==klass || record.anmeldenummer!==number)
-            throw new Error("Klassen- oder Markenreferenz in EUIPO-Antwort stimmt nicht überein.");
-          details.replaceChildren();
-          details.append(elt("strong","","Klasse "+klass+" – tatsächliche Waren/Dienstleistungen"));
-          const lang=record.sprache==="de" && record.deutsche_registerfassung
+          }));
+          if(seq!==fetchCount||chosen!==klass)return;
+          if(record.fehler)throw new Error(String(record.fehler));
+          if(record.nizza_klasse!==klass||record.anmeldenummer!==number)
+            throw new Error("EUIPO-Klassen- oder Markenreferenz stimmt nicht überein.");
+          details.replaceChildren(elt("strong","","Klasse "+klass+" – tatsächliche Waren/Dienstleistungen"));
+          const lang=record.sprache==="de"&&record.deutsche_registerfassung
             ? "Deutsch · EUIPO-Registerfassung"
-            : "Registersprache: "+(record.sprache||"nicht angegeben")+" · keine deutsche Fassung übermittelt";
+            : "Registersprache: "+(record.sprache||"unbekannt")+" · keine deutsche Registerfassung übermittelt";
           details.append(elt("div","gslang",lang));
-          if(record.technisch_naechster_begriff) {
-            const best=record.technisch_naechster_begriff;
-            const box=elt("div","best");
-            box.append(elt("strong","","Technisch textähnlichste Position (keine rechtliche Warenähnlichkeitsbewertung)"));
-            box.append(elt("div","",best.wortlaut));
-            box.append(elt("div","muted","Vergleich mit: "+best.verglichen_mit+
-              " · Textähnlichkeit: "+Math.round(best.technische_textaehnlichkeit*100)+" %"));
-            details.append(box);
+          const entries=Array.isArray(record.passende_positionen)?record.passende_positionen:[];
+          const positions=new Map(entries.filter(x=>x&&typeof x.wortlaut==="string")
+            .map(x=>[x.wortlaut,x]));
+          if(entries.length) {
+            details.append(elt("div","match-note",
+              "Rot: textlich identische oder ähnliche Kandidaten – keine juristische Ähnlichkeitsfeststellung."));
+          } else if(data?.references?.length){
+            details.append(elt("div","warning","Keine hinreichende Textübereinstimmung; rechtliche Ähnlichkeit bleibt ungeprüft."));
           } else {
-            details.append(elt("div","warning",data?.references?.length
-              ? "Keine technische Vorauswahl möglich. Verzeichnis prüfen."
-              : "Keine ähnlichste Position ermittelt: Bitte in der Recherche Vergleichswaren/-dienstleistungen angeben."));
+            details.append(elt("div","warning","Keine Referenzwaren angegeben – kein automatischer Abgleich."));
           }
           const terms=Array.isArray(record.begriffe)?record.begriffe:[];
-          if(terms.length) {
-            const list=elt("ol");
-            for (const term of terms) {
-              if (typeof term==="string") list.append(elt("li","",term));
+          if(terms.length){
+            const ol=elt("ol");
+            for(const term of terms) {
+              if(typeof term!=="string")continue;
+              const found=positions.get(term);
+              const li=elt("li",found?"matched":"",term);
+              if(found)li.append(elt("span","",
+                found.art==="identisch"?" (identisch)":" (textlich ähnlich)"));
+              ol.append(li);
             }
-            details.append(list);
-          } else details.append(elt("p","muted","Kein Registerverzeichnis für diese Klasse verfügbar."));
+            details.append(ol);
+          } else details.append(elt("p","muted","Für diese Klasse kein Verzeichnis verfügbar."));
           details.append(elt("div","warning",String(record.hinweis||"")));
           details.append(elt("div","warning",
-            "Technische Vorauswahl ist keine rechtliche Waren-/Dienstleistungsähnlichkeitsprüfung. Vollständigkeit und Schutzumfang im Register prüfen."));
-        } catch(e) {
-          if(seq===fetchCount && chosen===klass)
+            "Maßgeblich ist die juristische Waren-/Dienstleistungsähnlichkeit, nicht die Textübereinstimmung."));
+        }catch(e){
+          if(seq===fetchCount&&chosen===klass)
             details.replaceChildren(elt("div","warning","Klasse "+klass+": "+
-              (e instanceof Error ? e.message : "Abruf fehlgeschlagen")));
+              (e instanceof Error?e.message:"Abruf fehlgeschlagen")));
         }
       });
     }
-    if(!classes.length) line.append(elt("span","muted","keine Angaben"));
+    if(!classes.length)line.append(elt("span","muted","keine Angaben"));
     outer.append(line,details);
-    return outer;
+    function setOverview(record) {
+      const classEntries=Array.isArray(record?.klassen)?record.klassen:[];
+      for (const c of classEntries) overviewMap.set(c.nizza_klasse,c);
+      buttons.forEach((btn,i)=>{
+        const cls=classes[i],entry=overviewMap.get(cls);
+        btn.replaceChildren();
+        btn.append(elt("span","",String(cls)));
+        const found=Array.isArray(entry?.passende_positionen)?entry.passende_positionen:[];
+        if(found.length){
+          const top=found[0];
+          const label=elt("span","matching-label"," ("+(
+            top.art==="identisch"?"identisch: ":"textlich ähnlich: ")+
+            String(top.wortlaut).slice(0,80)+(found.length>1?" u. a.":"")+")");
+          btn.append(label);
+        }
+      });
+    }
+    return {node:outer,setOverview};
   }
   function createCard(mark, generation, imageJobs) {
     const number = typeof mark.anmeldenummer === "string" ? mark.anmeldenummer : "";
@@ -246,10 +369,24 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
                 infoRow("Markenform",form),
                 infoRow("Registerstatus",mark.registerstatus),
                 infoRow("Statusbewertung",mark.statusbewertung));
-    info.append(classSelection(mark,number));
-    if (typeof mark.schriftbild_aehnlichkeit_technisch === "number") {
-      info.append(infoRow("Technische Textähnlichkeit",
-                          Math.round(mark.schriftbild_aehnlichkeit_technisch * 100) + " %"));
+    const classView=classSelection(mark,number);
+    info.append(classView.node);
+    const riskView=riskWidget(mark,number);
+    info.append(riskView.node);
+    if(data?.references?.length && validNumber.test(number)) {
+      imageJobs.push(async()=>{
+        if(generation!==serial)return;
+        try{
+          const overview=await goodsOverview(number);
+          if(generation!==serial)return;
+          classView.setOverview(overview);
+          riskView.update(overview);
+        }catch(e) {
+          if(generation!==serial)return;
+          const why=elt("span","warning","Registerübersicht nicht verfügbar; Risikowert bleibt vorläufig.");
+          info.append(why);
+        }
+      });
     }
     card.append(info);
     if (form !== "WORD" && validNumber.test(number)) {
@@ -303,6 +440,16 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
   function render() {
     if (!data) return;
     const generation=++serial;
+    // Global provisional triage of all retrieved candidates, before pagination.
+    // Sorting does not imply a final legal likelihood-of-confusion finding.
+    function key(mark){return String(mark.anmeldenummer||"")+":"+JSON.stringify(data.references);}
+    data.kandidaten.sort((left,right)=>{
+      const a=evaluation(left,goodsResolved.get(key(left))||null).index ??
+        ((left.schriftbild_aehnlichkeit_technisch||0)*100);
+      const b=evaluation(right,goodsResolved.get(key(right))||null).index ??
+        ((right.schriftbild_aehnlichkeit_technisch||0)*100);
+      return b-a;
+    });
     const totalPages=Math.max(1,Math.ceil(data.kandidaten.length/pageSize));
     page=Math.min(Math.max(0,page),totalPages-1);
     const offset=page*pageSize;
@@ -321,9 +468,10 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
       " · Referenzwaren: "+(data.references.length?data.references.join("; "):"nicht angegeben")+
       " · "+data.stand+" · "+data.gesamt+" Kandidaten ermittelt"+
       (data.errors ? " · "+data.errors+" fehlerhafte Teilabfrage(n)" : "");
-    $("disclaimer").textContent="Teilrecherche: "+data.note+
-      ". Technische Textähnlichkeit ist keine juristische Verwechslungsgefahrbewertung. "+
-      "Nizza-Klassen sind nur Vorfilter. Für Wortmarken wird keine grafische Darstellung erfunden.";
+    $("disclaimer").textContent="Vorläufig nach Risikoindex sortiert (alle geladenen Kandidaten; nicht vollständiger Registerbestand). "+
+      "Ein Prozentwert ist eine technische PRIORISIERUNGSZAHL und KEINE Wahrscheinlichkeit einer Verwechslung. "+
+      "Zeichenklang, Begriffsinhalt, Bildelemente, tatsächliche W/D-Ähnlichkeit und Kennzeichnungskraft sind juristisch zu prüfen. "+
+      "Teilrecherche: "+data.note+". Nizza-Klassen sind nur Vorfilter.";
     setStatus(jobs.length ? "Markenbilder werden abgerufen …" : "Ergebnisse angezeigt.");
     let next=0;
     async function worker() {
@@ -333,7 +481,17 @@ button:focus-visible{outline:2px solid #2670db;outline-offset:2px}
       }
     }
     Promise.all([worker(),worker()]).then(() => {
-      if (generation===serial) setStatus("Ergebnisse angezeigt.");
+      if (generation!==serial)return;
+      const previous=data.kandidaten.map(x=>x.anmeldenummer).join("|");
+      const key=x=>String(x.anmeldenummer||"")+":"+JSON.stringify(data.references);
+      data.kandidaten.sort((a,b)=>{
+        const ea=evaluation(a,goodsResolved.get(key(a))||null);
+        const eb=evaluation(b,goodsResolved.get(key(b))||null);
+        return (eb.index ?? (b.schriftbild_aehnlichkeit_technisch||0)*100)-
+               (ea.index ?? (a.schriftbild_aehnlichkeit_technisch||0)*100);
+      });
+      if(data.kandidaten.map(x=>x.anmeldenummer).join("|")!==previous)render();
+      else setStatus("Ergebnisse nach vorläufigem Risikoindex sortiert.");
     }).catch(() => {
       if (generation===serial) setStatus("Einzelne Markenbilder konnten nicht geladen werden.",true);
     });
