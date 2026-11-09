@@ -26,7 +26,7 @@ const window={parent:host,addEventListener(type,fn){if(type==="message")listener
 const candidate=(number, form, word)=>({
   anmeldenummer:number,markenform:form,zeichen:word,registerstatus:"REGISTERED",
   statusbewertung:"potenziell lebend",nizza_klassen:[19],
-  schriftbild_aehnlichkeit_technisch:0.78
+  schriftbild_aehnlichkeit_technisch:number==="019440746"?0.78:number==="019430321"?0.40:0.10
 });
 function fromHost(message){listener({source:host,data:message});}
 function fromIframe(msg){
@@ -41,9 +41,9 @@ function fromIframe(msg){
         referenzwaren_dienstleistungen:["Beton"],
         vollstaendigkeit:"NICHT garantiert; begrenzte Teilstringabfragen",
         kandidaten:[
-          candidate("019440746","FIGURATIVE","BOXBETON"),
+          candidate("019398425","FIGURATIVE","METALBETON"),
           candidate("019430321","WORD","SYSTEMBETON"),
-          candidate("019398425","FIGURATIVE","METALBETON")
+          candidate("019440746","FIGURATIVE","BOXBETON")
         ]
       }}}));
   }else if(msg.method==="tools/call"){
@@ -58,10 +58,11 @@ function fromIframe(msg){
       calls.push({anmeldenummer,nizza_klasse,referenzwaren,kind:"class"});
       const best={wortlaut:"Beton",verglichen_mit:"Beton",technische_textaehnlichkeit:1};
       const matched={...best,art:"identisch"};
+      const matchedGoods=anmeldenummer!=="019398425";
       const data=nizza_klasse===0 ? {
         anmeldenummer,nizza_klasse:0,klassen:[{
-          nizza_klasse:19,passende_positionen:[matched],
-          technisch_naechster_begriff:best
+          nizza_klasse:19,passende_positionen:matchedGoods?[matched]:[],
+          technisch_naechster_begriff:matchedGoods?best:null
         }]
       }:{
         anmeldenummer,nizza_klasse,begriffe:["Beton","Baustoffe"],
@@ -86,6 +87,9 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   await pause();
   assert.ok(initialized,"bridge initialized");
   assert.equal($("gallery").children.length,3,"all candidates are rendered");
+  const order=$("gallery").children.map(c=>c.children[1].children[0].textContent);
+  assert.equal(JSON.stringify(order),JSON.stringify(["BOXBETON","SYSTEMBETON","METALBETON"]),
+    "initial sorting puts most critical candidates first");
   const images=calls.filter(x=>x.kind!=="class");
   const previews=calls.filter(x=>x.kind==="class"&&x.nizza_klasse===0);
   assert.equal(images.length,2,"only figurative candidates trigger image requests");
@@ -131,6 +135,11 @@ const pause=()=>new Promise(ok=>setTimeout(ok,25));
   const riskBox=info.children.find(x=>x.className==="risk-box");
   assert.ok(riskBox,"risk score is available");
   assert.match(riskBox.children[0].children[1].textContent,/%/);
+  const riskAt=i=>$("gallery").children[i].children[1].children
+    .find(x=>x.className==="risk-box").children[0].children[1].className;
+  assert.equal(riskAt(0),"risk-high","high index is red");
+  assert.equal(riskAt(1),"risk-medium","medium index is orange");
+  assert.equal(riskAt(2),"risk-low","low index is green");
   riskBox.children[0].click();
   assert.equal(riskBox.children[1].hidden,false,"detailed assessment expands");
   const reasons=riskBox.children[1].children.map(x=>x.children.map(y=>y.textContent).join("")).join(" ");
