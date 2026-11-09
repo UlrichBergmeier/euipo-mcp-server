@@ -279,7 +279,10 @@ def euipo_aehnlichkeitsgalerie_ui() -> str:
         "dort werden tatsächliche EUIPO-Waren-/DL-Verzeichnisse angezeigt. "
         "Wenn vom Nutzer konkrete Waren oder Dienstleistungen vorgegeben sind, "
         "diese in referenzwaren_dienstleistungen übergeben: Nur dann wird pro Klasse "
-        "ein technisch textähnlichster Kandidat markiert. "
+        "textlich identische und technisch ähnliche Begriffe hervorgehoben werden. "
+        "Die Galerie priorisiert Treffer mit einem ausdrücklich nicht statistischen "
+        "Risikoindex als Arbeitshilfe; juristische Zeichenähnlichkeit, Warenähnlichkeit "
+        "und Kennzeichnungskraft dürfen nicht als geprüft ausgegeben werden. "
         "Nicht die gesuchten Markennamen als Waren unterstellen. Nur verfügbare "
         "Abbildungen laden; Wortmarken bleiben Wortmarken. Keine Vollständigkeit "
         "oder rechtliche Warenähnlichkeit bzw. Verwechslungsgefahr behaupten."
@@ -367,7 +370,9 @@ async def euipo_aehnlichkeitsgalerie(
     description=(
         "Rufe für eine konkrete EUIPO-Marke und Nizza-Klasse die tatsächlich im "
         "Register eingetragenen Waren/Dienstleistungen bevorzugt auf Deutsch ab. "
-        "Optional aus Referenzwaren die technisch textähnlichste Position ermitteln. "
+        "Mit nizza_klasse=0 werden alle Klassen dieser Marke in einem einzigen "
+        "Registerdetailabruf geliefert. Optional aus Referenzwaren die "
+        "textlich identischen oder technisch ähnlichsten Positionen ermitteln. "
         "Diese technische Vorauswahl ist ausdrücklich keine rechtliche "
         "Ähnlichkeitsbewertung; fremdsprachige Texte nicht als Deutsch ausgeben."
     ),
@@ -381,10 +386,25 @@ async def euipo_klassendetails(
     """Gezielter, authentifizierter Detailabruf erst nach dem Klassen-Klick."""
     try:
         validate_application_number(anmeldenummer)
-        if type(nizza_klasse) is not int or not 1 <= nizza_klasse <= 45:
-            raise ValueError("Nizza-Klasse muss zwischen 1 und 45 liegen")
+        if type(nizza_klasse) is not int or not 0 <= nizza_klasse <= 45:
+            raise ValueError("Nizza-Klasse muss zwischen 0 und 45 liegen")
         validate_reference_terms(referenzwaren)
         detail = await EUIPOClient().trademark_detail(anmeldenummer)
+        if nizza_klasse == 0:
+            goods = detail.get("goodsAndServices")
+            if not isinstance(goods, list):
+                raise RuntimeError("EUIPO-Warenverzeichnis ist nicht verfügbar")
+            classes = sorted({
+                item["classNumber"] for item in goods
+                if isinstance(item, dict) and type(item.get("classNumber")) is int
+                and 1 <= item["classNumber"] <= 45
+            })
+            return {
+                "anmeldenummer": anmeldenummer,
+                "nizza_klasse": 0,
+                "klassen": [parse_class_goods(detail, c, referenzwaren) for c in classes],
+                "hinweis": "Nur tatsächliche Registerverzeichnisse; technische Texttreffer ohne Rechtsbewertung.",
+            }
         return parse_class_goods(detail, nizza_klasse, referenzwaren)
     except (RuntimeError, ValueError):
         return {"fehler": "Waren-/Dienstleistungsverzeichnis nicht verfügbar oder Eingabe ungültig."}
