@@ -178,9 +178,10 @@ Die Galerie wurde um die folgenden Punkte ergänzt:
   markiert. Ein KI-/Sachverständigen-Gutachten wird **nicht simuliert**.
 - Die Treffer werden vor der Paginierung innerhalb der begrenzten EUIPO-
   Trefferliste nach dem **vorläufigen** Index absteigend sortiert.
-  Nachträglich abgerufene Verzeichnisse aktualisieren zunächst die Anzeige
-  des einzelnen Treffers; eine vollständige Neubewertung aller Treffer
-  verlangt eine erweiterte, kosten-/ratelimitbewusste Registeranreicherung.
+  Nachträglich abgerufene Klassenübersichten aktualisieren den Risikoindex
+  und die Reihenfolge automatisch; Treffer ohne geladenes Verzeichnis bleiben
+  vorläufig bewertet. Eine vollständige Neubewertung aller Treffer verlangt
+  zusätzliche, kosten-/ratelimitbewusste Registeranreicherung.
 - Formel nur für die Priorisierung: Index = 100 × (0,65 × technische
   Wortähnlichkeit + 0,35 × technische W/D-Textnähe). Fehlende W/D-Daten
   werden neutral und vorläufig statt als Negativbefund behandelt. Diese
