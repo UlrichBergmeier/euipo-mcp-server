@@ -149,6 +149,46 @@ referenzwaren_dienstleistungen=["Beton"])`.
 Die Funktion bleibt bis zu den automatischen Tests sowie der sichtbaren
 Klassenprüfung in ChatGPT ausschließlich im Entwicklungszweig.
 
+
+## Risikoorientierte Vergleichsgalerie (experimentell, PR 6)
+
+Die Galerie wurde um die folgenden Punkte ergänzt:
+- Die Nizza-Klassen laden bei angezeigten Treffern automatisch eine **kompakte
+  Übersicht** aller Klassen mit nur einem authentifizierten EUIPO-Detailabruf
+  pro Marke. Neben der Klasse steht, soweit durch die tatsächlichen Waren-/DL-
+  Begriffe belegt, z. B. `19 (identisch: Beton)` bzw.
+  `19 (textlich ähnlich: Betonbau)`.
+- Beim Klassenklick wird das **vollständige Registerverzeichnis** dieser Klasse
+  abgerufen. Identische oder technisch textähnliche Positionen erscheinen
+  **rot und fett**. Der genannte Vergleichsbegriff muss vom Benutzer stammen.
+  Die algorithmische Textübereinstimmung ist **keine** juristische Feststellung
+  der Waren-/Dienstleistungsähnlichkeit.
+- Jeder Treffer erhält einen anklickbaren **vorläufigen Risikoindex** 0–100
+  (rot ab 70, orange ab 40, sonst grün). Der Index dient ausschließlich der
+  technischen **Triage** von Recherchetreffern; er ist **keine mathematisch
+  oder empirisch ermittelte Verwechslungswahrscheinlichkeit**. Bei fehlenden
+  Referenzwaren oder nicht auswertbarem Zeichen wird statt einer Zahl
+  "nicht bewertbar" gezeigt. Solange die Registerdaten nicht geladen sind,
+  bleibt der Wert besonders unsicher.
+- Die Detailansicht unterscheidet schriftbildliche **technische**
+  Zeichenfolgenähnlichkeit, technische W/D-Textübereinstimmung und die
+  **nicht geprüfte** Kennzeichnungskraft. Klang-/Begriffsähnlichkeit,
+  bildliche Bestandteile, tatsächliche W/D-Ähnlichkeit, Kennzeichnungskraft
+  und Verkehrsbekanntheit werden ausdrücklich als nicht juristisch geprüft
+  markiert. Ein KI-/Sachverständigen-Gutachten wird **nicht simuliert**.
+- Die Treffer werden vor der Paginierung innerhalb der begrenzten EUIPO-
+  Trefferliste nach dem **vorläufigen** Index absteigend sortiert.
+  Nachträglich abgerufene Verzeichnisse aktualisieren zunächst die Anzeige
+  des einzelnen Treffers; eine vollständige Neubewertung aller Treffer
+  verlangt eine erweiterte, kosten-/ratelimitbewusste Registeranreicherung.
+- Formel nur für die Priorisierung: Index = 100 × (0,65 × technische
+  Wortähnlichkeit + 0,35 × technische W/D-Textnähe). Fehlende W/D-Daten
+  werden neutral und vorläufig statt als Negativbefund behandelt. Diese
+  Gewichte sind technische Heuristiken, **keine EUIPO-Formel**.
+- OAuth, API-Secrets, die bestehende Suche und die 10 MCP-Werkzeuge bleiben
+  unverändert. Alle Funktionen zunächst **nur auf dem Entwicklungszweig**;
+  vor Deployment erst Python-/Node-Tests und Live-Darstellung prüfen.
+
 ## Sicherheit und Deployment
 
 - Basis-`compose.yaml` veröffentlicht nur `127.0.0.1:8765`, die zusätzliche
