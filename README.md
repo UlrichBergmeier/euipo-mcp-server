@@ -263,3 +263,7 @@ Zeichen- und Warenähnlichkeitsprüfung erforderlich.
 4. In einem neuen Chat: mehrere tatsächliche EUIPO-Bildmarken nebeneinander sichtbar,
    Wortmarken korrekt textlich dargestellt, Original per Klick verfügbar.
 5. Bei EUIPO-Fehlern / unvollständigen Trefferlisten explizite Hinweise.
+
+
+## Wortlaut und Wortbildungsfamilien recherchieren
+`euipo_wortmarkenrecherche` unterstützt zusätzlich `suchmodus`: `EXAKT` sucht den alleinigen Wortlaut, `WORTANFANG` die Wortbildungsfamilie, `ENTHAELT` erhält die bisherige Suche. Keine Wildcards oder RSQL-Syntax übergeben. `sortierfeld="registrationDate"` ordnet jüngere Eintragungen zuerst. Die Antwort weist Modus, Sortierung, Seite und Gesamtzahl aus. Weitere Seiten sind getrennt abzurufen. Wortgleichheit bzw. Wortanfang zusätzlich anhand des tatsächlich gelieferten Wortlauts prüfen; keine Vollständigkeit bei begrenztem Abruf behaupten. Anmelde- und Eintragungsdatum sowie tatsächliche Waren/Dienstleistungen und unbekannte Eintragungsgrundlagen getrennt würdigen.

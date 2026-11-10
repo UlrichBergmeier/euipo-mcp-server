@@ -35,9 +35,19 @@ def _substring(term: str) -> str:
     return f'"*{term}*"' if " " in term else f"*{term}*"
 
 
+def _word_value(term: str, mode: str = "ENTHAELT") -> str:
+    """Server-owned RSQL patterns; never accept wildcard/operator syntax from callers."""
+    term = _safe_search_term(term)
+    if mode not in {"EXAKT", "WORTANFANG", "ENTHAELT"}:
+        raise ValueError("Suchmodus muss EXAKT, WORTANFANG oder ENTHAELT sein")
+    value = term if mode == "EXAKT" else term + "*" if mode == "WORTANFANG" else "*" + term + "*"
+    return f'"{value}"' if " " in term else value
+
+
 def build_query(term: str, nice_class: int | None, status: str | None = None,
-                mark_basis: str = "ALL", mark_feature: str = "WORD") -> str:
-    value = _substring(term)
+                mark_basis: str = "ALL", mark_feature: str = "WORD",
+                match_mode: str = "ENTHAELT") -> str:
+    value = _word_value(term, match_mode)
     if nice_class is not None and (type(nice_class) is not int or not 1 <= nice_class <= 45):
         raise ValueError("Nizza-Klasse muss zwischen 1 und 45 liegen")
     if status is not None and status not in STATUSES:
@@ -83,21 +93,25 @@ class EUIPOClient:
                 "Accept": "application/json", "Accept-Language": "de"}
 
     async def search_wordmarks(self, term, nice_class, status=None, page=0, size=20,
-                               mark_basis="ALL", mark_feature="WORD"):
+                               mark_basis="ALL", mark_feature="WORD", match_mode="ENTHAELT",
+                               sort_field="applicationDate"):
         if type(page) is not int or page < 0:
             raise ValueError("Ungültige Seite")
         if type(size) is not int or not 10 <= size <= 100:
             raise ValueError("Seitengröße 10 bis 100")
-        query = build_query(term, nice_class, status, mark_basis, mark_feature)
+        if sort_field not in {"applicationDate", "registrationDate"}:
+            raise ValueError("Sortierfeld muss applicationDate oder registrationDate sein")
+        query = build_query(term, nice_class, status, mark_basis, mark_feature, match_mode)
         async with httpx.AsyncClient(timeout=25.0) as client:
             token = await self._token(client)
             response = await client.get(f"{API_BASE_URL}/trademarks",
-                params={"query": query, "page": page, "size": size, "sort": "applicationDate:desc"},
+                params={"query": query, "page": page, "size": size, "sort": f"{sort_field}:desc"},
                 headers=self._headers(token))
             response.raise_for_status()
             data = response.json()
         return {"recherchestand": "live durchgeführt", "quelle": "EUIPO Trademark Search API 1.1.0",
             "abgerufen_utc": datetime.now(timezone.utc).isoformat(), "query": query,
+            "suchmodus": match_mode, "sortierfeld": sort_field,
             "seite": data.get("page", page), "seitenumfang": data.get("size", size),
             "treffer_gesamt": data.get("totalElements"), "seiten_gesamt": data.get("totalPages"),
             "marken": data.get("trademarks", []),

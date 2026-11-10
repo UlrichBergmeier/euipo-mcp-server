@@ -16,6 +16,21 @@ class TestEuipoQueries(unittest.TestCase):
         q=build_query("XY",None,None)
         self.assertNotIn("status==",q)
 
+    def test_exact_and_prefix_are_separate_server_side_queries(self):
+        exact=build_query("SYSTEM",None,"REGISTERED","EU_TRADEMARK",match_mode="EXAKT")
+        prefix=build_query("SYSTEM",None,"REGISTERED","EU_TRADEMARK",match_mode="WORTANFANG")
+        self.assertIn("verbalElement==SYSTEM and",exact)
+        self.assertNotIn("*",exact)
+        self.assertIn("verbalElement==SYSTEM* and",prefix)
+        self.assertNotIn("==*SYSTEM",prefix)
+        self.assertIn('verbalElement=="SYSTEM BETON"',build_query("SYSTEM BETON",None,match_mode="EXAKT"))
+        self.assertIn('verbalElement=="SYSTEM BETON*"',build_query("SYSTEM BETON",None,match_mode="WORTANFANG"))
+
+    def test_modes_cannot_inject_search_syntax(self):
+        for term in ("SYSTEM*", "SYSTEM;status==REGISTERED", 'SYSTEM"', "SYSTEM)"):
+            with self.assertRaises(ValueError):build_query(term,None,match_mode="EXAKT")
+        with self.assertRaises(ValueError):build_query("SYSTEM",None,match_mode="SYSTEM*")
+
     def test_reject_invalid_values(self):
         with self.assertRaises(ValueError):
             build_query("XY;status==REGISTERED",19)

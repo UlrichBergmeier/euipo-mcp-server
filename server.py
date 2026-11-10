@@ -65,15 +65,21 @@ async def euipo_wortmarkenrecherche(
     seite: int = 0,
     seitenumfang: int = 20,
     markenbasis: str = "ALL",
+    suchmodus: str = "ENTHAELT",
+    sortierfeld: str = "applicationDate",
 )->dict:
     """EUIPO-Wortmarken; standardmäßig alle Registerstatus einschließlich Anmeldungen.
 
     Für nur eingetragene Marken registerstatus='REGISTERED' angeben.
+    suchmodus: EXAKT für alleinigen Wortlaut, WORTANFANG für Wortbildungsfamilien,
+    ENTHAELT für die bisherige Teilstringsuche. Keine Wildcards eingeben.
+    Mit sortierfeld='registrationDate' jüngere Eintragungen zuerst abrufen.
     """
     try:
         status = None if registerstatus in ("ALLE", "ALL", "") else registerstatus
         return await EUIPOClient().search_wordmarks(suchbegriff,nizza_klasse or None,
-                        status,seite,seitenumfang,markenbasis)
+                        status,seite,seitenumfang,markenbasis,
+                        match_mode=suchmodus,sort_field=sortierfeld)
     except (RuntimeError,ValueError) as e:
         return {"fehler":str(e),"recherchestand":"nicht durchgeführt"}
     except Exception:
