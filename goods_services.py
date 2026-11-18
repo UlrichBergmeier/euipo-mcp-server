@@ -98,7 +98,9 @@ class GoodsServicesClient:
             "/classification-translation",
         }:
             raise ValueError("Nicht erlaubter EUIPO-Endpunkt")
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Translation needed >30s in the EUIPO live test.
+        # Token exchange and other operations use shorter timeouts.
+        async with httpx.AsyncClient(timeout=20.0) as client:
             auth = await client.post(
                 TOKEN_URL, data={
                     "client_id": self.client_id,
@@ -113,6 +115,10 @@ class GoodsServicesClient:
                 raise RuntimeError("Kein EUIPO-Zugriffstoken erhalten")
             response = await client.post(
                 GS_URL + path, json=payload, params=params,
+                timeout=httpx.Timeout(
+                    90.0 if path == "/classification-translation" else 30.0,
+                    connect=10.0,
+                ),
                 headers={
                     "X-IBM-Client-Id": self.client_id,
                     "Authorization": "Bearer " + token,
