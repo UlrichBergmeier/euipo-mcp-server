@@ -1,6 +1,6 @@
 # Vorbereitung EUIPO Goods and Services API 1.2.0
 
-**Status 18.11.2026:** EUIPO-Produktabo der separaten App **W/D-Harmonisierung** für **Goods and Services 1.2.0** ist laut Freigabebestätigung **Approved**. Die technische Integration ist weiterhin nur vorbereitet: Noch keine Live-Abfrage und keine Änderung der laufenden Hostinger-Installation bis zum isolierten Test. Entwicklungszweig: `feature/euipo-goods-services`.
+**Status 18.11.2026:** EUIPO-Produktabo der separaten App **W/D-Harmonisierung** für **Goods and Services 1.2.0** ist **Approved**. Drei isolierte Live-Tests auf Hostinger sind bestanden: Harmonisierung „Beton“ Klasse 19, Begriffsvorschläge und Übersetzung „Beton“ → „Concrete“. Noch **keine Produktivumstellung**. Der bestehende ChatGPT-MCP-Dienst läuft weiter unverändert. Entwicklungszweig: `feature/euipo-goods-services`.
 
 ## Offizielle API (aus der beigefügten OpenAPI-Spezifikation)
 - API-Basis: `https://api.euipo.europa.eu/goods-and-services`
@@ -50,8 +50,8 @@ Testet mit simulierten API-Antworten, insbesondere abschließende Punkte, richti
 ## Vor produktivem Rollout
 1. **Erledigt:** EUIPO hat die App „W/D-Harmonisierung“ für **Goods And Services 1.2.0** genehmigt.
 2. Die neuen EUIPO-Zugangsdaten separat und verdeckt auf Hostinger installieren; nur für non-root Docker-User lesbar machen.
-3. Zunächst einen **isolierten** Testcontainer mit dem Entwicklungszweig verwenden und mit echten freigegebenen Zugangsdaten eine kontrollierte Abfrage durchführen.
-4. API-Response-Formate anhand der Liveantwort validieren, insbesondere Zuordnung zu einzelnen Begriffen und Begriffsklassen.
+3. **Erledigt:** Mit separatem Image `euipo-gs-live-test:preview` wurden alle drei neuen Funktionen gegen echte EUIPO-Antworten erfolgreich getestet.
+4. **Teilweise erledigt:** Die drei getesteten API-Antworten entsprechen den Implementierungsannahmen. Weitere Begriffe/Klassen sowie Fehlerantworten und längere Übersetzungswartezeiten müssen im produktiven Ablauf überwacht werden.
 5. Im persönlichen und Kanzlei-Workspace prüfen, ob die bestehenden Auth0-Berechtigungen für die W/D-Funktionen ausreichen; bei Bedarf getrennte Scope-/Rollenberechtigung entwerfen.
 6. Code prüfen, Änderung kontrolliert in `main` übernehmen, Backup/Rollback vorsehen.
 7. `Dockerfile` aktualisieren, Overlay-Dateien für Secrets berücksichtigen, mit bestehenden HTTPS- und Base-Compose-Dateien kombinieren. n8n und Traefik nicht ändern.
