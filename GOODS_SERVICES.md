@@ -1,6 +1,6 @@
 # Vorbereitung EUIPO Goods and Services API 1.2.0
 
-**Status 06.11.2026:** EUIPO-Produktabo der separaten App **W/D-Harmonisierung** steht auf **Pending approval**. Keine Live-Abfrage und keine Änderung der laufenden Hostinger-Installation bis zur Freigabe. Entwicklungszweig: `feature/euipo-goods-services`.
+**Status 18.11.2026:** EUIPO-Produktabo der separaten App **W/D-Harmonisierung** für **Goods and Services 1.2.0** ist laut Freigabebestätigung **Approved**. Die technische Integration ist weiterhin nur vorbereitet: Noch keine Live-Abfrage und keine Änderung der laufenden Hostinger-Installation bis zum isolierten Test. Entwicklungszweig: `feature/euipo-goods-services`.
 
 ## Offizielle API (aus der beigefügten OpenAPI-Spezifikation)
 - API-Basis: `https://api.euipo.europa.eu/goods-and-services`
@@ -48,7 +48,7 @@ python3 -m unittest -v test_goods_services.py
 Testet mit simulierten API-Antworten, insbesondere abschließende Punkte, richtige Nizza-Klasse, fehlende Antwort-Zuordnung, Vorschläge, Übersetzungs-Schema und fehlerhafte Eingaben. Kein API-Schlüssel und keine Netzwerkverbindung erforderlich.
 
 ## Vor produktivem Rollout
-1. EUIPO bestätigt die Freigabe der App „W/D-Harmonisierung“ für **Goods And Services 1.2.0**.
+1. **Erledigt:** EUIPO hat die App „W/D-Harmonisierung“ für **Goods And Services 1.2.0** genehmigt.
 2. Die neuen EUIPO-Zugangsdaten separat und verdeckt auf Hostinger installieren; nur für non-root Docker-User lesbar machen.
 3. Zunächst einen **isolierten** Testcontainer mit dem Entwicklungszweig verwenden und mit echten freigegebenen Zugangsdaten eine kontrollierte Abfrage durchführen.
 4. API-Response-Formate anhand der Liveantwort validieren, insbesondere Zuordnung zu einzelnen Begriffen und Begriffsklassen.
