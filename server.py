@@ -10,6 +10,7 @@ from core import create_variants, comparative_age
 from euipo import EUIPOClient, validate_application_number
 from euipo_extensions import advanced_search, get_trademark_image
 from similarity import euipo_similarity_search
+from goods_services import harmonize, suggestions, translations
 from class_goods import parse_class_goods, validate_reference_terms
 
 mcp=FastMCP(
@@ -427,6 +428,66 @@ async def euipo_klassendetails(
         return {"fehler": "Waren-/Dienstleistungsverzeichnis nicht verfügbar oder Eingabe ungültig."}
     except Exception:
         return {"fehler": "EUIPO-Detailabruf fehlgeschlagen; serverseitig prüfen."}
+
+
+
+@mcp.tool()
+async def euipo_wd_harmonisierung(
+    waren_dienstleistungen: list[dict],
+    sprache: str = "de",
+) -> dict:
+    """Vergleiche einzelne W/D-Begriffe je Nizza-Klasse mit der offiziellen EUIPO-HDB.
+
+    Eingabe als Liste z.B. [{"classNumber": 19, "terms": ["Beton.", "Bausteine."]}].
+    Der Punkt am Ende wird nur für den Vergleich entfernt; Original bleibt sichtbar.
+    Eine HDB-Bestätigung ist keine rechtliche Aussage zur Eintragungsfähigkeit.
+    """
+    try:
+        return await harmonize(waren_dienstleistungen, sprache)
+    except (RuntimeError, ValueError) as exc:
+        return {"fehler": str(exc), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "EUIPO-Goods-and-Services-Validierung fehlgeschlagen; Zugang/Freigabe prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
+
+
+@mcp.tool()
+async def euipo_wd_vorschlaege(
+    begriffe: list[str],
+    sprache: str = "de",
+    nizza_klasse: int = 0,
+    max_vorschlaege: int = 20,
+) -> dict:
+    """Ermittle offizielle EUIPO-HDB-Vorschläge für W/D-Begriffe; Klasse 0 = alle."""
+    try:
+        return await suggestions(begriffe, sprache, nizza_klasse, max_vorschlaege)
+    except (RuntimeError, ValueError) as exc:
+        return {"fehler": str(exc), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "EUIPO-Goods-and-Services-Vorschläge fehlgeschlagen; Zugang/Freigabe prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
+
+
+@mcp.tool()
+async def euipo_wd_uebersetzung(
+    waren_dienstleistungen: list[dict],
+    quell_sprache: str = "de",
+    ziel_sprachen: list[str] | None = None,
+) -> dict:
+    """Übersetze möglichst zuvor validierte HDB-Begriffe mittels EUIPO in EU-Sprachen."""
+    try:
+        return await translations(waren_dienstleistungen, quell_sprache, ziel_sprachen or ["en"])
+    except (RuntimeError, ValueError) as exc:
+        return {"fehler": str(exc), "recherchestand": "nicht durchgeführt"}
+    except Exception:
+        return {
+            "fehler": "EUIPO-Goods-and-Services-Übersetzung fehlgeschlagen; Zugang/Freigabe prüfen",
+            "recherchestand": "nicht durchgeführt",
+        }
 
 
 if __name__=="__main__":
