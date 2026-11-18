@@ -124,7 +124,7 @@ class RegisterGoodsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ten_tools_present(self):
         names={x.name for x in await mcp.list_tools()}
-        self.assertEqual(len(names),10)
+        self.assertEqual(len(names),13)
         self.assertIn("euipo_klassendetails",names)
         self.assertIn("euipo_aehnlichkeitsgalerie",names)
 
